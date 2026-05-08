@@ -155,21 +155,47 @@ reduce total request time.
 
 ## Two-Computer Failure Test
 
-Run this after the normal two-host benchmark:
+Run this after the normal two-host benchmark. There are two useful cases:
+
+Case A: H is down before a new request starts. This should fail fast.
 
 1. Start the cluster normally.
-2. Start a client with small chunks so it runs long enough:
-
-```bash
-build/client config/nodes.yaml fail_h 2000 0
-```
-
-3. While it runs, stop H on host2:
+2. Stop H on host2:
 
 ```bash
 pkill -f "team_node H"
 ```
 
-Expected behavior: the client should receive an RPC error instead of a partial
-result. Record the exact error line, the number of chunks completed before the
-failure, and whether the remaining nodes stayed alive.
+3. Start a new client request:
+
+```bash
+build/client config/nodes.yaml fail_h_down 512000 0
+```
+
+Expected behavior: the client receives an RPC error instead of a partial result.
+In local verification, the error was:
+
+```text
+RPC error: child fetch failed: H: failed to connect to all addresses
+```
+
+Case B: H dies after the first chunk of the same request. This may still finish
+because A caches the gathered result after the first successful page. That is
+not a failure of the test; it shows a design tradeoff. The cache protects an
+already-gathered request from later node loss, but it also makes A a memory
+pressure point.
+
+To try Case B, start a long request and stop H while it is paging:
+
+```bash
+build/client config/nodes.yaml fail_h 2000 0
+```
+
+Then stop H on host2:
+
+```bash
+pkill -f "team_node H"
+```
+
+Record which case you ran, the exact error line if any, the number of chunks
+completed, and whether the remaining nodes stayed alive.

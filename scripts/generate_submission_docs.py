@@ -107,12 +107,13 @@ def make_docx():
         "The Python node failed under system Python without yaml. The launcher now uses venv/bin/python when available.",
         "The first benchmark included one-record chunks, which was too slow for normal iteration. Tiny chunks are now opt-in.",
         "Large requested chunks were clamped to 64 KB. The cap is now 1 MB.",
+        "With H down before a new request, the client fails clearly. If H dies after A has cached the gathered result, that same request can still finish from cache.",
     ]
     for item in failures:
         doc.add_paragraph(item, style="List Bullet")
 
     add_heading(doc, "Remaining Final Work", 1)
-    add_para(doc, "Run the final chunk sweep on two physical computers with at least 15 runs per chunk size. Add one failure test by killing H during a long request and recording the client error.")
+    add_para(doc, "Run the final chunk sweep on two physical computers with at least 15 runs per chunk size. Run both H-down failure cases: before a new request and after the first page is cached.")
 
     doc.save(ROOT / "mini2-report.docx")
 
@@ -134,16 +135,16 @@ def make_poster():
         shape.line.color.rgb = RGBColor(40, 54, 75)
         return shape
 
-    title = slide.shapes.add_textbox(PptInches(0.45), PptInches(0.25), PptInches(8.1), PptInches(0.7))
+    title = slide.shapes.add_textbox(PptInches(0.45), PptInches(0.22), PptInches(9.6), PptInches(0.78))
     tf = title.text_frame
-    tf.text = "Chunk Size Controls Distributed Query Cost"
+    tf.text = "The Fastest Curve Was Not Trustworthy Until We Broke It"
     p = tf.paragraphs[0]
     p.font.size = PptPt(30)
     p.font.bold = True
     p.font.color.rgb = RGBColor(245, 248, 255)
 
     sub = slide.shapes.add_textbox(PptInches(0.48), PptInches(0.92), PptInches(8.6), PptInches(0.35))
-    sub.text_frame.text = "NYC 311 scatter-gather over C++/Python gRPC nodes"
+    sub.text_frame.text = "NYC 311 scatter-gather: chunk-size result plus the failures that validated it"
     sub.text_frame.paragraphs[0].font.size = PptPt(13)
     sub.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
 
@@ -178,22 +179,23 @@ def make_poster():
     note.text_frame.paragraphs[0].font.size = PptPt(11)
     note.text_frame.paragraphs[0].font.color.rgb = RGBColor(198, 208, 224)
 
-    box(PptInches(8.05), PptInches(3.0), PptInches(4.8), PptInches(1.35), RGBColor(20, 31, 47))
-    caveat = slide.shapes.add_textbox(PptInches(8.35), PptInches(3.18), PptInches(4.25), PptInches(0.95))
-    caveat.text_frame.text = "Tradeoff: fewer round trips, but larger buffers and higher per-RPC latency."
-    caveat.text_frame.paragraphs[0].font.size = PptPt(16)
-    caveat.text_frame.paragraphs[0].font.bold = True
-    caveat.text_frame.paragraphs[0].font.color.rgb = RGBColor(245, 248, 255)
+    box(PptInches(8.05), PptInches(3.0), PptInches(4.8), PptInches(1.55), RGBColor(20, 31, 47))
+    caveat = slide.shapes.add_textbox(PptInches(8.35), PptInches(3.16), PptInches(4.25), PptInches(1.16))
+    caveat.text_frame.text = "Validation failures caught:\nport collision | partial tree | cached partial result"
+    for p in caveat.text_frame.paragraphs:
+        p.font.size = PptPt(14)
+        p.font.bold = True
+        p.font.color.rgb = RGBColor(245, 248, 255)
 
-    box(PptInches(8.05), PptInches(4.65), PptInches(4.8), PptInches(1.15), RGBColor(20, 31, 47))
-    topo = slide.shapes.add_textbox(PptInches(8.35), PptInches(4.82), PptInches(4.25), PptInches(0.75))
+    box(PptInches(8.05), PptInches(4.85), PptInches(4.8), PptInches(1.05), RGBColor(20, 31, 47))
+    topo = slide.shapes.add_textbox(PptInches(8.35), PptInches(5.0), PptInches(4.25), PptInches(0.7))
     topo.text_frame.text = "client -> A -> B,H,G,I\nB -> C,D,E    E -> F"
     for p in topo.text_frame.paragraphs:
         p.font.size = PptPt(15)
         p.font.color.rgb = RGBColor(220, 230, 242)
 
     footer = slide.shapes.add_textbox(PptInches(0.55), PptInches(6.82), PptInches(12.2), PptInches(0.3))
-    footer.text_frame.text = "Local debug: 3 runs. Final two-computer run: 15-30 runs per chunk size."
+    footer.text_frame.text = "Tradeoff: fewer round trips, larger buffers. Local debug: 3 runs; final two-computer run: 15-30 runs."
     footer.text_frame.paragraphs[0].font.size = PptPt(11)
     footer.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
 

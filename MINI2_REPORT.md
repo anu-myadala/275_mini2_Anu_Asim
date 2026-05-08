@@ -120,6 +120,13 @@ One important limitation remains: the fair queue schedules equal chunk turns,
 not equal finish times. In the four-client run, each client completed 50 chunks,
 but cli2 still finished about 41% slower than cli1.
 
+Failure timing also mattered. If H is down before a new request starts, A fails
+the request clearly instead of returning a partial answer. In local verification,
+the client received `child fetch failed: H`. If H dies after A has already
+gathered and cached the first page, the same request can still finish from
+cache. This is a real design tradeoff: caching protects an active request after
+gather, but it increases memory pressure at A.
+
 ## What Is Still Missing for the Final Submission
 
 Run the same benchmark on two physical computers and add the numbers beside the
@@ -132,9 +139,9 @@ Run a larger shard generation, ideally millions of records if time allows:
 ./scripts/make_shards.py "/path/to/311.csv" --limit 9000000 --out-dir shards
 ```
 
-Add one failure experiment: kill node H during a request and report whether the
-client receives a clear failure. Do not hide the failure; it shows the system
-was tested under distributed-process conditions.
+Add one failure experiment with H down before a new request and one experiment
+where H is killed after the first page is cached. Do not hide the difference;
+it is one of the more interesting distributed-systems lessons in the project.
 
 ## Notes and Course Concepts Used
 
@@ -153,7 +160,8 @@ Use one focused poster point:
 
 **Chunk size is the control knob: on our local 80,000-record run, moving from
 2 KB chunks to 512 KB chunks reduced total request time from 423 ms to 9 ms,
-but per-RPC latency increased.**
+but that conclusion only became trustworthy after we fixed port collisions,
+tree ambiguity, and partial-result caching.**
 
 That is stronger than a general architecture summary because it has a claim,
-evidence, and a tradeoff.
+evidence, failures, and a tradeoff.

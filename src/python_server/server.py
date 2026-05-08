@@ -1,29 +1,5 @@
 #!/usr/bin/env python3
-"""
-Mini 2 – Python gRPC TeamService node.
-
-Serves any node id passed on the command line (identity is NOT hardcoded).
-The binary Record layout matches the C++ #pragma pack(1) struct exactly:
-
-    int32_t  unique_key    4 bytes
-    float    latitude      4 bytes
-    float    longitude     4 bytes
-    uint32_t incident_zip  4 bytes
-    uint16_t created_year  2 bytes
-    uint8_t  status        1 byte
-    uint8_t  borough       1 byte
-    Total:                20 bytes per record
-
-struct.calcsize("<ihHB") should equal 15. The '<' prefix forces little-endian
-byte order to match the x86/ARM default; on a big-endian host (uncommon) the
-C++ side would need adjusting too.
-
-Usage:
-    python3 server.py <node_id> <config_path>
-
-Example:
-    python3 src/python_server/server.py I config/nodes.yaml
-"""
+"""Python implementation of a Mini 2 team node."""
 
 import os
 import sys
@@ -36,14 +12,15 @@ from concurrent import futures
 import cluster_pb2
 import cluster_pb2_grpc
 
-# '<' = little-endian; matches the C++ packed Record.
 RECORD_FMT  = "<iffIHBB"
 RECORD_SIZE = struct.calcsize(RECORD_FMT)
 assert RECORD_SIZE == 20, f"Record size mismatch: expected 20, got {RECORD_SIZE}"
 
 
 def _build_children(cfg: dict) -> dict:
-    """BFS from the leader; return {node_id: [child_id, ...]} for all nodes."""
+    if "children" in cfg:
+        return {k: list(v or []) for k, v in cfg["children"].items()}
+
     adj: dict = {}
     for edge in cfg.get("overlay", []):
         a, b = edge
@@ -71,7 +48,6 @@ def _build_children(cfg: dict) -> dict:
 
 
 def _node_endpoint(node_id: str, cfg: dict) -> str:
-    """Return 'addr:port' for the given node from the YAML config."""
     for host_info in cfg.get("hosts", {}).values():
         if node_id in host_info.get("procs", []):
             addr = host_info["addr"]
@@ -83,15 +59,11 @@ def _node_endpoint(node_id: str, cfg: dict) -> str:
 class TeamServicer(cluster_pb2_grpc.TeamServiceServicer):
     def __init__(self, node_id: str, cfg: dict) -> None:
         self.node_id = node_id
-        # Shard base mirrors C++ logic: ord('A')=65, so 'I'=73 → base=80.
         self.base = (ord(node_id) - ord("A")) * 10
         self.cfg  = cfg
 
         all_children = _build_children(cfg)
 
-        # Build reusable channel+stub per child at startup (not per RPC).
-        # Re-creating channels on every call adds TCP + HTTP/2 negotiation
-        # overhead that degrades latency under concurrent load.
         self._child_stubs: list = []
         for cid in all_children.get(node_id, []):
             endpoint = _node_endpoint(cid, cfg)
@@ -131,7 +103,6 @@ class TeamServicer(cluster_pb2_grpc.TeamServiceServicer):
         return b""
 
     def _build_fallback_payload(self) -> bytes:
-        """Serialise a tiny sample only when shard files are absent."""
         parts = []
         for i in range(self.base, self.base + 10):
             parts.append(struct.pack(
@@ -163,11 +134,10 @@ class TeamServicer(cluster_pb2_grpc.TeamServiceServicer):
                 reply = stub.Fetch(sub_req)
                 segments.extend(reply.segments)
             except grpc.RpcError as exc:
-                print(f"[{self.node_id}] child {child_id} error: {exc.details()}",
-                      flush=True)
-                # Continue gathering from other children on partial failure.
+                context.abort(grpc.StatusCode.INTERNAL,
+                              f"child fetch failed: {child_id}: {exc.details()}")
+                return cluster_pb2.ShardReply()
 
-        # Mark the final segment (Segment is immutable in proto-py, so rebuild).
         if segments:
             last = segments[-1]
             segments[-1] = cluster_pb2.Segment(payload=last.payload, last=True)

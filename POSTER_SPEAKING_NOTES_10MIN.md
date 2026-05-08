@@ -6,10 +6,10 @@ Our Mini 2 project is a distributed query system over NYC 311 data. The main
 question we focused on was: when a distributed result set is too large to return
 all at once, how much does chunk size affect performance?
 
-The one-slide poster is built around that question. The short answer is that
-chunk size mattered a lot. In our local run, moving from 2 KB chunks to 512 KB
-chunks reduced total request time from about 423 milliseconds to about 9
-milliseconds for the same 80,000 records.
+The one-slide poster is built around that question, but it also shows the deeper
+lesson: our first measurements were not automatically trustworthy. Chunk size
+mattered a lot, but we only trusted the curve after we found and fixed several
+ways the system could return misleading results.
 
 ## 0:45-1:45 System Setup
 
@@ -99,6 +99,12 @@ request if a child fetch fails.
 Fourth, the Python server failed under the system Python because `yaml` was not
 installed. The launcher now uses the project virtual environment if it exists.
 
+The newest failure test is also useful. If node H is down before a new request,
+the client gets a clear child-fetch error. But if H dies after A has already
+gathered and cached the first page, that same request can still complete. That
+means the cache helps an active request survive late node loss, but it also
+turns A into a memory pressure point.
+
 ## 7:30-8:30 Class Concepts
 
 This project connects to several lecture topics.
@@ -127,14 +133,16 @@ I expect the absolute latency to be higher because now traffic crosses the
 network. But the trend should still show that chunk size controls the number of
 round trips.
 
-We will also do one failure run by killing node H during a long request and
-recording whether the client gets a clear error.
+We will also do two failure runs: one with H down before a new request, and one
+where H dies after the first page is already cached. The difference between
+those two runs is part of the learning, not something to hide.
 
 ## 9:30-10:00 Closing
 
 The main takeaway is that distributed performance was not just about using gRPC
 or adding more processes. The biggest lever we measured was how the result was
-broken into chunks.
+broken into chunks, and the biggest lesson was that distributed measurements can
+look convincing while still being wrong.
 
 Mini 1 taught us to care about data representation. Mini 2 showed us that once
 the data crosses process and machine boundaries, message shape and request

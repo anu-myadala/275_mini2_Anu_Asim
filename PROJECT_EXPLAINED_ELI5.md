@@ -120,8 +120,9 @@ trials; the final two-computer result should use at least 15.
 ## What To Say If Asked About Weaknesses
 
 The current system caches the full gathered result at A, which is simple and
-easy to measure, but it means A can become a memory pressure point for very
-large result sets.
+easy to measure. If a node dies after A has already gathered the result, the
+current request can still finish from cache. The downside is that A can become a
+memory pressure point for very large result sets.
 
 The fair queue gives clients equal turns, but it does not guarantee identical
 finish times.
@@ -142,4 +143,5 @@ bash benchmark.sh build config/nodes.yaml 15 | tee results/chunk_sweep_2host.tsv
 bash benchmark_fairness.sh build config/nodes.yaml 4 32000 | tee results/fairness_2host.txt
 ```
 
-6. Do one failure test by killing H during a long request.
+6. Do two failure tests: H down before a new request, and H killed after the
+   first page of a request is cached.

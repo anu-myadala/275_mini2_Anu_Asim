@@ -62,30 +62,30 @@ For local single-machine testing leave both as `127.0.0.1`.
 
 **Machine 1 (nodes A–F):**
 ```bash
-./leader     A  ../config/nodes.yaml
-./team_node  B  ../config/nodes.yaml
-./team_node  C  ../config/nodes.yaml
-./team_node  D  ../config/nodes.yaml
-./team_node  E  ../config/nodes.yaml
-./team_node  F  ../config/nodes.yaml
+build/team_node  C  config/nodes.yaml
+build/team_node  D  config/nodes.yaml
+build/team_node  F  config/nodes.yaml
+build/team_node  E  config/nodes.yaml
+build/team_node  B  config/nodes.yaml
+build/leader     A  config/nodes.yaml
 ```
 
 **Machine 2 (nodes G–I):**
 ```bash
-./team_node  G  ../config/nodes.yaml
-./team_node  H  ../config/nodes.yaml
-python3 src/python_server/server.py I config/nodes.yaml
+build/team_node  G  config/nodes.yaml
+build/team_node  H  config/nodes.yaml
+venv/bin/python src/python_server/server.py I config/nodes.yaml
 ```
 
 **Client (any machine):**
 ```bash
-./client  ../config/nodes.yaml  cli1  128
+build/client  config/nodes.yaml  cli1  32000  5
 ```
 
 Or with a larger chunk size to test throughput vs. call count tradeoff:
 ```bash
-./client  ../config/nodes.yaml  cli1  512
-./client  ../config/nodes.yaml  cli2  128   # concurrent client
+build/client  config/nodes.yaml  cli1  512000  0
+build/client  config/nodes.yaml  cli2  32000   0
 ```
 
 ---
@@ -93,15 +93,16 @@ Or with a larger chunk size to test throughput vs. call count tradeoff:
 ## Overlay topology (tree)
 
 ```
-Edges: AB BC BD BE EF ED EG AH AG AI
+Assignment overlay edges: AB BC BD BE EF ED EG AH AG AI
+Directed tree used for scatter-gather:
 
               A (leader)
             / | \  \
            B  H  G  I(Python)
          / | \
         C  D  E
-              |\ 
-              F  D  G
+              |
+              F
 ```
 
 Node A is the only public-facing entry point. Clients connect only to A.
@@ -116,10 +117,16 @@ calls, higher peak memory.
 
 Run the client with different chunk sizes and compare the printed timing:
 ```bash
-for sz in 13 52 128 256 520; do
+for sz in 2000 8000 32000 128000 512000; do
   echo "=== chunk_size=$sz ==="
-  ./client ../config/nodes.yaml cli1 $sz
+  build/client config/nodes.yaml cli1 $sz 0
 done
+```
+
+For final results, use the benchmark script with at least 15 runs:
+
+```bash
+bash benchmark.sh build config/nodes.yaml 15 | tee results/chunk_sweep_2host.tsv
 ```
 
 ---
