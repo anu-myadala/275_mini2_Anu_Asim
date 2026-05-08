@@ -1,40 +1,73 @@
 #include "team_node.hpp"
 #include <cstring>
+#include <cstdlib>
+#include <fstream>
+#include <thread>
 #include <grpcpp/grpcpp.h>
 
 TeamServiceImpl::TeamServiceImpl(ClusterConfig& cfg, const std::string& my_id)
     : config_(cfg), id_(my_id) {
 
-    // Shard base: node A=0, B=10, C=20, ..., I=80.
-    // In a real deployment each node loads its own partition of the dataset
-    // from disk. The deterministic offset ensures records are unique per node.
     base_ = (static_cast<int>(id_[0]) - static_cast<int>('A')) * 10;
+    payload_ = loadShardPayload();
+    if (payload_.empty()) {
+        payload_ = buildFallbackPayload();
+        std::cerr << "[" << id_ << "] WARNING: using fallback sample data; "
+                  << "run scripts/make_shards.py with the 311 CSV for final results\n";
+    }
 
-    // Build reusable stubs for all children at startup (not per-RPC).
-    // Re-using channels avoids repeated TCP handshake + HTTP/2 SETTINGS
-    // negotiation on every request – critical for latency under load.
     for (const std::string& child_id : config_.getChildren(id_)) {
         NodeInfo ni = config_.getNode(child_id);
         auto channel = grpc::CreateChannel(ni.endpoint(),
                                            grpc::InsecureChannelCredentials());
         child_stubs_.push_back({ child_id, TeamService::NewStub(channel) });
+        std::cerr << "[" << id_ << "] child " << child_id
+                  << " -> " << ni.endpoint() << "\n";
     }
 }
 
-std::string TeamServiceImpl::buildOwnPayload() const {
-    // Serve 10 typed, packed records per shard. Each field uses its correct
-    // primitive type (int32, double, int16, uint8) rather than strings, which
-    // allows the binary payload to be cast directly to Record* on the client
-    // without any string parsing or type conversion.
+std::string TeamServiceImpl::loadShardPayload() const {
+    std::vector<std::string> roots;
+    if (const char* env = std::getenv("MINI2_SHARD_DIR"))
+        roots.emplace_back(env);
+    roots.emplace_back("shards");
+    roots.emplace_back("../shards");
+
+    for (const auto& root : roots) {
+        const std::string path = root + "/shard_" + id_ + ".bin";
+        std::ifstream in(path, std::ios::binary);
+        if (!in) continue;
+
+        std::string data((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+        const auto extra = data.size() % sizeof(Record);
+        if (extra != 0) {
+            data.resize(data.size() - extra);
+            std::cerr << "[" << id_ << "] trimmed partial record bytes from "
+                      << path << "\n";
+        }
+        std::cout << "[" << id_ << "] loaded "
+                  << data.size() / sizeof(Record)
+                  << " records from " << path << "\n";
+        return data;
+    }
+
+    return {};
+}
+
+std::string TeamServiceImpl::buildFallbackPayload() const {
     std::string payload;
     payload.reserve(10 * sizeof(Record));
 
     for (int i = base_; i < base_ + 10; ++i) {
         Record r;
-        r.id    = static_cast<int32_t>(i);
-        r.value = static_cast<double>(i) * 1.1;
-        r.year  = static_cast<int16_t>(2020 + (i % 5));
-        r.flag  = static_cast<uint8_t>(i % 2);
+        r.unique_key   = static_cast<int32_t>(10000000 + i);
+        r.latitude     = 40.7000f + static_cast<float>(i) * 0.001f;
+        r.longitude    = -73.9000f - static_cast<float>(i) * 0.001f;
+        r.incident_zip = static_cast<uint32_t>(10000 + (i % 200));
+        r.created_year = static_cast<uint16_t>(2020 + (i % 5));
+        r.status       = static_cast<uint8_t>(i % 4);
+        r.borough      = static_cast<uint8_t>(i % 6);
         payload.append(reinterpret_cast<const char*>(&r), sizeof(r));
     }
     return payload;
@@ -45,18 +78,14 @@ grpc::Status TeamServiceImpl::Fetch(grpc::ServerContext* ctx,
                                     ShardReply*          out) {
     NsCount t0 = now_ns();
 
-    // Serve own shard.
     {
         auto* seg = out->add_segments();
-        seg->set_payload(buildOwnPayload());
+        seg->set_payload(payload_);
         seg->set_last(false);
     }
 
-    // Parallel subtree fan-out. Mini 1 feedback identified contention and
-    // serialization as a scaling issue, so child RPCs are overlapped here.
-    // Each child fills its own temporary reply buffer to avoid lock contention
-    // while the requests are in flight.
     std::vector<ShardReply> child_replies(child_stubs_.size());
+    std::vector<std::string> child_errors(child_stubs_.size());
     std::vector<std::thread> workers;
     workers.reserve(child_stubs_.size());
 
@@ -75,16 +104,18 @@ grpc::Status TeamServiceImpl::Fetch(grpc::ServerContext* ctx,
             );
 
             if (!status.ok()) {
-                std::cerr << "[" << id_ << "] child "
-                          << child_stubs_[i].id
-                          << " error: "
-                          << status.error_message()
-                          << "\n";
+                child_errors[i] = child_stubs_[i].id + ": " + status.error_message();
             }
         });
     }
 
     for (auto& t : workers) t.join();
+
+    for (const auto& err : child_errors) {
+        if (!err.empty())
+            return grpc::Status(grpc::StatusCode::INTERNAL,
+                                "child fetch failed: " + err);
+    }
 
     for (auto& rep : child_replies) {
         for (const auto& s : rep.segments()) {
@@ -92,7 +123,6 @@ grpc::Status TeamServiceImpl::Fetch(grpc::ServerContext* ctx,
         }
     }
 
-    // Mark the final segment so callers know the payload boundary.
     if (out->segments_size() > 0)
         out->mutable_segments(out->segments_size() - 1)->set_last(true);
 
@@ -102,6 +132,7 @@ grpc::Status TeamServiceImpl::Fetch(grpc::ServerContext* ctx,
 
     std::cout << "[" << id_ << "] Fetch"
               << " base=" << base_
+              << " local_records=" << payload_.size() / sizeof(Record)
               << " segs=" << out->segments_size()
               << " dt=" << dt / 1000 << "us\n";
 

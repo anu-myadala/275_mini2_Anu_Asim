@@ -1,239 +1,175 @@
-# Mini 2 – How to Run, Collect Results, and Update the Report
+# Mini 2 Run Results
 
-This guide walks through every step from cloning to having actual benchmark
-numbers to drop into the report. Answer to your question at the top:
-**yes, two machines on the same network gives you real-world results**,
-but a single machine with loopback is sufficient for the benchmarks the
-professor expects. Section 4 explains the difference.
+Dataset used locally: NYC 311 CSV converted into binary shards with:
 
----
-
-## 1. Prerequisites
-
-### macOS (with Homebrew)
 ```bash
-brew install cmake grpc protobuf yaml-cpp llvm
-# Use Homebrew clang, NOT Xcode clang:
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-export CC=clang
-export CXX=clang++
+./scripts/make_shards.py "/Users/anumyad/Downloads/311_Service_Requests_from_2020_to_Present_20260209 (1).csv" --limit 90000 --out-dir shards
 ```
 
-### Ubuntu / Debian
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    cmake \
-    libgrpc++-dev \
-    protobuf-compiler-grpc \
-    libprotobuf-dev \
-    libyaml-cpp-dev \
-    build-essential \
-    python3-pip
-```
+The leader A does not own a shard, so this local sample returns 80,000 records
+from B-I. Each row is a 20-byte typed record: key, lat, lon, zip, created year,
+status code, and borough code.
 
-### Python (both platforms)
-```bash
-cd src/python_server
-pip3 install -r requirements.txt
-# Regenerate proto stubs if cluster_pb2.py is missing or proto changed:
-bash gen_proto.sh
-cd ../..
-```
+## Local Loopback Run
 
----
+Machine: local macOS loopback, all processes on one host.
+Topology: A -> B,H,G,I; B -> C,D,E; E -> F. Node I is Python.
 
-## 2. Git Setup and Build
+Build and run:
 
 ```bash
-# 1. Initialize repo and push (one-time)
-git init
-git add .
-git commit -m "Initial mini2 submission"
-git remote add origin https://github.com/YOUR_USERNAME/mini2-cmpe275.git
-git push -u origin main
-
-# 2. Build (run from project root every time you change code)
-mkdir -p build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)       # Linux
-# make -j$(sysctl -n hw.ncpu)   # macOS
-cd ..
-```
-
-You should see three binaries in `build/`:
-- `leader`
-- `team_node`
-- `client`
-
----
-
-## 3. Single-Machine Run (loopback — required baseline)
-
-### Step 1: Start the cluster
-Open a terminal in the project root:
-```bash
+cmake --build build -j4
 bash run_cluster.sh build config/nodes.yaml
+build/client config/nodes.yaml cli_smoke3 32000 0
 ```
 
-This starts all 9 nodes in the background and logs to `logs/`.
-Wait ~2 seconds for all gRPC servers to bind their ports.
+Smoke result:
 
-Verify nodes are up:
+| Chunk bytes | Records | Chunks | Total us | Avg RPC us | Max RPC us |
+|---:|---:|---:|---:|---:|---:|
+| 32000 | 80000 | 50 | 42770 | 855 | 19205 |
+
+## How Many Runs
+
+The notes recommend testing 15-30 times to form an average and discarding clear
+outliers. For the final two-computer run, use:
+
+- 15 runs per chunk size as the minimum final table.
+- 30 runs per chunk size if there is enough time.
+- 3 runs only for smoke testing while debugging.
+
+The local table below used 3 runs because it was a quick verification pass. Do
+not present it as the final experimental count after the two-computer run.
+
+## Chunk Sweep
+
+Command:
+
 ```bash
-grep "listening on" logs/*.log
-```
-Expected output (order may vary):
-```
-logs/leader.log:[A] listening on 0.0.0.0:50051
-logs/node_B.log:[B] listening on 0.0.0.0:50052
-...
-logs/node_I.log:[I] (Python) listening on :50059
+bash benchmark.sh build config/nodes.yaml 15 | tee results/chunk_sweep_2host.tsv
 ```
 
-### Step 2: Single client smoke test
+Local debug average of three runs:
+
+| Chunk bytes | Avg total us | Avg chunks | Avg RPC us | Min RPC us | Max RPC us |
+|---:|---:|---:|---:|---:|---:|
+| 2000 | 423093 | 800 | 528 | 223 | 19252 |
+| 8000 | 100274 | 200 | 501 | 219 | 9169 |
+| 32000 | 31579 | 50 | 631 | 335 | 7085 |
+| 128000 | 19446 | 13 | 1496 | 450 | 11862 |
+| 512000 | 9073 | 4 | 2268 | 334 | 7119 |
+
+Takeaway: increasing chunk size reduces total wall time because it reduces the
+number of client-leader round trips. The largest chunks have higher per-RPC
+latency, but the total request finishes faster because only four chunks are
+needed.
+
+## Fairness Run
+
+Command:
+
 ```bash
-build/client config/nodes.yaml cli1 128
-```
-You should see 90 records printed (9 nodes × 10 records each) and a summary like:
-```
-=== Summary for client 'cli1' ===
-  records    : 90
-  chunks     : 9
-  chunk_size : 128 B
-  total_rpc  : 1243 us
-  avg_rpc    : 138 us
-  min_rpc    : 98 us
-  max_rpc    : 312 us
+bash benchmark_fairness.sh build config/nodes.yaml 4 32000
 ```
 
-### Step 3: Chunk-size sweep (10 runs per size)
-```bash
-bash benchmark.sh build config/nodes.yaml 10 | tee results/chunk_sweep.tsv
-```
+| Client | Total us | Chunks | Avg RPC us | Max RPC us |
+|---|---:|---:|---:|---:|
+| cli1 | 91514 | 50 | 1830 | 15658 |
+| cli2 | 128746 | 50 | 2574 | 20441 |
+| cli3 | 96256 | 50 | 1925 | 29361 |
+| cli4 | 97142 | 50 | 1942 | 24460 |
 
-This saves a TSV file. Open it in Excel or Numbers to make the chart for
-Section 4.1 of the report. Expected pattern:
-- `chunk=15` → ~90 chunks, highest total_us (~8,000–15,000 us loopback)
-- `chunk=1500` → 1 chunk, lowest total_us (~200–500 us loopback)
+Observation: all clients completed the same 50 chunks. The scheduler prevents a
+single client from consuming the whole response stream first, but cli2 was about
+41% slower than cli1 in this run. That should be reported as a limitation:
+the current fairness policy balances chunk opportunities, not exact end-to-end
+latency.
 
-### Step 4: Fairness test (4 concurrent clients)
-```bash
-bash benchmark_fairness.sh build config/nodes.yaml 4 128
-```
+## Failures Found During Verification
 
-Expected: all four clients finish within ~5% of each other on total_us.
-Results saved to `results/fairness_4clients.txt`.
+- Another old Mini 2 process was already listening on ports 50051, 50052, and
+  50058. The client connected to the wrong server and returned empty errors.
+  Fix: stop old listeners with `lsof -nP -iTCP:50051 -sTCP:LISTEN` and `kill`.
+- The original tree derivation only gave A one child, so only B's subtree was
+  returned. Fix: make the directed tree explicit in `config/nodes.yaml`.
+- The client reused the same request id, so a partial failed response could be
+  served from cache. Fix: client request ids now include a per-run timestamp,
+  and leader child fetch failures throw instead of caching partial data.
+- The Python node failed under system Python because `yaml` was not installed.
+  Fix: `run_cluster.sh` uses `venv/bin/python` when it exists.
+- The first benchmark attempted 20-byte chunks on 80,000 records, which created
+  thousands of client calls and was not useful for iteration. Fix: the default
+  benchmark now uses practical chunk sizes; set `MINI2_TINY_CHUNKS=1` only for
+  a stress test.
+- The leader capped chunk size at 64 KB, so larger requested chunks did not
+  actually test larger payload behavior. Fix: the cap is now 1 MB.
+- The launcher started processes correctly, but background jobs could disappear
+  when the shell closed. Fix: `run_cluster.sh` now uses `nohup` and PID files.
+- The local fairness run showed cli2 about 41% slower than cli1 even though all
+  clients received 50 chunks. This is not hidden in the report: our queue
+  balances turns, not exact wall-clock completion time.
 
-### Step 5: Stop the cluster
-```bash
-pkill -f "team_node|leader" ; pkill -f "server.py"
-```
-Or: `kill $(pgrep -f "team_node|leader|server.py")`
+## Two-Computer Run Checklist
 
----
+1. Copy the repo to both machines and build both.
+2. Generate or copy the same `shards/` directory to both machines. Each node
+   only reads its own `shard_X.bin`, so host2 at minimum needs G, H, and I.
+3. Edit `config/nodes.yaml` on both machines:
 
-## 4. Two-Machine Run (recommended for final results)
-
-Running on two real machines gives you meaningful network latency (1–5 ms
-per hop instead of ~50 µs loopback). This is what the professor means by
-"two computer minimum configuration."
-
-### Setup
-Edit `config/nodes.yaml`. Replace both `127.0.0.1` addresses:
 ```yaml
 hosts:
-  host1: { addr: 192.168.1.10, procs: [A, B, C, D, E, F] }  # Machine 1 IP
-  host2: { addr: 192.168.1.20, procs: [G, H, I] }            # Machine 2 IP
+  host1: { addr: 192.168.1.10, procs: [A, B, C, D, E, F] }
+  host2: { addr: 192.168.1.20, procs: [G, H, I] }
 ```
-Find your IP with `ip addr` (Linux) or `ifconfig en0` (macOS).
 
-**Both machines need the same `config/nodes.yaml`** — copy it via scp:
+4. On host2, start G, H, and I first:
+
 ```bash
-scp config/nodes.yaml user@192.168.1.20:~/mini2/config/nodes.yaml
+build/team_node G config/nodes.yaml
+build/team_node H config/nodes.yaml
+venv/bin/python src/python_server/server.py I config/nodes.yaml
 ```
 
-### Machine 1 (runs A–F):
+5. On host1, start C, D, F, E, B, then A:
+
 ```bash
-cd ~/mini2/build
-./leader     A ../config/nodes.yaml &
-./team_node  B ../config/nodes.yaml &
-./team_node  C ../config/nodes.yaml &
-./team_node  D ../config/nodes.yaml &
-./team_node  E ../config/nodes.yaml &
-./team_node  F ../config/nodes.yaml &
+build/team_node C config/nodes.yaml
+build/team_node D config/nodes.yaml
+build/team_node F config/nodes.yaml
+build/team_node E config/nodes.yaml
+build/team_node B config/nodes.yaml
+build/leader A config/nodes.yaml
 ```
 
-### Machine 2 (runs G–I):
+6. Run the client and benchmarks from host1:
+
 ```bash
-cd ~/mini2/build
-./team_node  G ../config/nodes.yaml &
-./team_node  H ../config/nodes.yaml &
-python3 ../src/python_server/server.py I ../config/nodes.yaml &
+build/client config/nodes.yaml two_host_smoke 32000 5
+bash benchmark.sh build config/nodes.yaml 15 | tee results/chunk_sweep_2host.tsv
+bash benchmark_fairness.sh build config/nodes.yaml 4 32000 | tee results/fairness_2host.txt
 ```
 
-### Client (run from either machine):
+Add the two-host numbers beside the loopback numbers. Expect higher absolute
+latency, especially on the first chunk, but the same trend that larger chunks
+reduce total request time.
+
+## Two-Computer Failure Test
+
+Run this after the normal two-host benchmark:
+
+1. Start the cluster normally.
+2. Start a client with small chunks so it runs long enough:
+
 ```bash
-./client ../config/nodes.yaml cli1 128
-bash benchmark.sh . ../config/nodes.yaml 10 | tee results/chunk_sweep_2machine.tsv
+build/client config/nodes.yaml fail_h 2000 0
 ```
 
----
+3. While it runs, stop H on host2:
 
-## 5. Saving and Committing Results
-
-After collecting data, commit everything:
 ```bash
-# Results live in results/
-git add results/
-git add logs/          # optional — shows the cluster ran
-git commit -m "Add benchmark results: chunk sweep + fairness test"
-git push
+pkill -f "team_node H"
 ```
 
----
-
-## 6. Plugging Numbers into the Report
-
-### Section 4.1 table (chunk size vs latency)
-From `results/chunk_sweep.tsv`, take the **average** of all 10 runs for each
-chunk size. Fill in the table in the report:
-
-| Chunk (B) | Avg total_us | Chunks | Avg RPC (us) |
-|-----------|--------------|--------|--------------|
-| 15        | [your number]| [...]  | [...]        |
-| ...       | ...          | ...    | ...          |
-
-### Section 4.2 table (fairness)
-From `results/fairness_4clients.txt`, copy the four client rows directly.
-
-### Key numbers for the poster stat boxes
-- **Latency ratio**: total_us(chunk=15) ÷ total_us(chunk=1500)  →  update "20×" if different
-- **Fairness spread**: max(total_us across clients) − min  →  update "CV < 2%" if different
-- **Page density**: always 60% (this is structural, not measured — keep it)
-
----
-
-## 7. Two-Machine vs. Single-Machine: Which to Submit?
-
-You should run on **both** and report both sets. For the submission:
-- **Loopback numbers** go in the main results table (reproducible by the grader)
-- **Two-machine numbers** go in a short paragraph in Section 4 noting
-  the higher absolute latency and the same relative trend
-
-The professor specifically requires a "Final run with at least two computers"
-per the mini2 spec. Even if you can only do one real run, document that you did it.
-
----
-
-## 8. Quick Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| `Failed to load config` | Run from the project root, not `build/` |
-| `Failed to start server` | A port is in use. `lsof -i :50051` to find it. |
-| Python `ModuleNotFoundError: cluster_pb2` | Run `bash gen_proto.sh` from `src/python_server/` |
-| Nodes connect but client gets 0 records | Check that all 9 nodes are running (`grep listening logs/*.log`) |
-| `grpc_cpp_plugin not found` on macOS | `export PATH="/opt/homebrew/bin:$PATH"` |
-| macOS SDK conflict (ldiv_t error) | Use Homebrew clang: `export CXX=clang++` with Homebrew LLVM |
+Expected behavior: the client should receive an RPC error instead of a partial
+result. Record the exact error line, the number of chunks completed before the
+failure, and whether the remaining nodes stayed alive.

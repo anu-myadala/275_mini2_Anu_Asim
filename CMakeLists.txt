@@ -8,11 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Switch to RelWithDebInfo if you need gdb symbols.
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 
-find_package(Protobuf REQUIRED)
 find_package(gRPC     CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
-include_directories(${Protobuf_INCLUDE_DIRS})
+# Note: protobuf is found in proto/CMakeLists to avoid duplicate target
+# definitions when gRPC's CMake config also depends on protobuf.
 include_directories(${CMAKE_BINARY_DIR}/proto)
 
 add_subdirectory(proto)

@@ -1,19 +1,9 @@
-// Mini2 client – pages through results from the leader using QueryOnce.
-//
-// Measures per-chunk and total latency (ns precision). Run multiple clients
-// in parallel from separate shells to observe FairQueue scheduling under
-// concurrent load.
-//
-// Usage:
-//   ./client <config_path> <client_id> [chunk_size_bytes]
-//
-// Examples:
-//   ./client ../config/nodes.yaml cli1 128      # small chunks, many round trips
-//   ./client ../config/nodes.yaml cli1 1500     # larger chunks, fewer round trips
-//   ./client ../config/nodes.yaml cli1 0        # server picks default (128 B)
 #include <grpcpp/grpcpp.h>
 #include "cluster.grpc.pb.h"
 #include "../common/config.hpp"
+#include <algorithm>
+#include <chrono>
+#include <climits>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -22,16 +12,18 @@
 
 using namespace mini2;
 
-// Must match the packed Record in team_node.hpp exactly.
 #pragma pack(push, 1)
 struct Record {
-    int32_t  id;
-    double   value;
-    int16_t  year;
-    uint8_t  flag;
+    int32_t  unique_key;
+    float    latitude;
+    float    longitude;
+    uint32_t incident_zip;
+    uint16_t created_year;
+    uint8_t  status;
+    uint8_t  borough;
 };
 #pragma pack(pop)
-static_assert(sizeof(Record) == 15, "Record layout mismatch");
+static_assert(sizeof(Record) == 20, "Record layout mismatch");
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
@@ -43,6 +35,9 @@ int main(int argc, char* argv[]) {
     const std::string config_path = argv[1];
     const std::string client_id   = argv[2];
     const int         chunk_size  = (argc > 3) ? std::stoi(argv[3]) : 128;
+    const int         max_print   = (argc > 4) ? std::stoi(argv[4]) : 20;
+    const auto        run_id      = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
 
     ClusterConfig cfg;
     if (!cfg.load(config_path)) {
@@ -70,7 +65,7 @@ int main(int argc, char* argv[]) {
     while (has_more) {
         Query q;
         q.set_client_id(client_id);
-        q.set_request_id("req-" + client_id);
+        q.set_request_id("req-" + client_id + "-" + run_id);
         q.set_chunk_size(chunk_size);
         q.set_offset(offset);
 
@@ -101,10 +96,16 @@ int main(int argc, char* argv[]) {
             for (int i = 0; i < rec_count; ++i) {
                 Record r;
                 std::memcpy(&r, data.data() + i * sizeof(Record), sizeof(r));
-                std::cout << "    id=" << std::setw(4) << r.id
-                          << " year=" << r.year
-                          << " val="  << std::fixed << std::setprecision(2) << r.value
-                          << " flag=" << static_cast<int>(r.flag) << "\n";
+                if (total_records < max_print) {
+                    std::cout << "    key=" << r.unique_key
+                              << " zip=" << r.incident_zip
+                              << " year=" << r.created_year
+                              << " lat=" << std::fixed << std::setprecision(4) << r.latitude
+                              << " lon=" << r.longitude
+                              << " status=" << static_cast<int>(r.status)
+                              << " borough=" << static_cast<int>(r.borough)
+                              << "\n";
+                }
                 ++total_records;
             }
         }
@@ -117,6 +118,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << "\n=== Summary for client '" << client_id << "' ===\n"
               << "  records    : " << total_records  << "\n"
+              << "  printed    : " << std::min(total_records, max_print) << "\n"
               << "  chunks     : " << call_count     << "\n"
               << "  chunk_size : " << chunk_size     << " B\n"
               << "  total_rpc  : " << total_rpc_ns / 1000 << " us\n"

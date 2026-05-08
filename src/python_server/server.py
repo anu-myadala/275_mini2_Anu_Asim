@@ -5,11 +5,14 @@ Mini 2 – Python gRPC TeamService node.
 Serves any node id passed on the command line (identity is NOT hardcoded).
 The binary Record layout matches the C++ #pragma pack(1) struct exactly:
 
-    int32_t  id      4 bytes  (little-endian signed)
-    double   value   8 bytes  (little-endian IEEE 754)
-    int16_t  year    2 bytes  (little-endian signed)
-    uint8_t  flag    1 byte
-    Total:          15 bytes per record
+    int32_t  unique_key    4 bytes
+    float    latitude      4 bytes
+    float    longitude     4 bytes
+    uint32_t incident_zip  4 bytes
+    uint16_t created_year  2 bytes
+    uint8_t  status        1 byte
+    uint8_t  borough       1 byte
+    Total:                20 bytes per record
 
 struct.calcsize("<ihHB") should equal 15. The '<' prefix forces little-endian
 byte order to match the x86/ARM default; on a big-endian host (uncommon) the
@@ -22,6 +25,7 @@ Example:
     python3 src/python_server/server.py I config/nodes.yaml
 """
 
+import os
 import sys
 import struct
 import time
@@ -32,10 +36,10 @@ from concurrent import futures
 import cluster_pb2
 import cluster_pb2_grpc
 
-# '<' = little-endian, 'i' = int32, 'd' = float64, 'h' = int16, 'B' = uint8
-RECORD_FMT  = "<idhB"
+# '<' = little-endian; matches the C++ packed Record.
+RECORD_FMT  = "<iffIHBB"
 RECORD_SIZE = struct.calcsize(RECORD_FMT)
-assert RECORD_SIZE == 15, f"Record size mismatch: expected 15, got {RECORD_SIZE}"
+assert RECORD_SIZE == 20, f"Record size mismatch: expected 20, got {RECORD_SIZE}"
 
 
 def _build_children(cfg: dict) -> dict:
@@ -97,17 +101,48 @@ class TeamServicer(cluster_pb2_grpc.TeamServiceServicer):
 
         self._req_count = 0
         self._total_ns  = 0
+        self._payload = self._load_shard_payload()
+        if not self._payload:
+            self._payload = self._build_fallback_payload()
+            print(f"[{self.node_id}] WARNING: using fallback sample data; "
+                  "run scripts/make_shards.py with the 311 CSV for final results",
+                  flush=True)
 
-    def _build_own_payload(self) -> bytes:
-        """Serialise this node's 10 records into typed, packed binary."""
+    def _load_shard_payload(self) -> bytes:
+        roots = []
+        if os.environ.get("MINI2_SHARD_DIR"):
+            roots.append(os.environ["MINI2_SHARD_DIR"])
+        roots.extend(["shards", "../shards"])
+
+        for root in roots:
+            path = os.path.join(root, f"shard_{self.node_id}.bin")
+            if not os.path.exists(path):
+                continue
+            with open(path, "rb") as f:
+                data = f.read()
+            extra = len(data) % RECORD_SIZE
+            if extra:
+                data = data[:-extra]
+                print(f"[{self.node_id}] trimmed partial record bytes from {path}",
+                      flush=True)
+            print(f"[{self.node_id}] loaded {len(data) // RECORD_SIZE} records "
+                  f"from {path}", flush=True)
+            return data
+        return b""
+
+    def _build_fallback_payload(self) -> bytes:
+        """Serialise a tiny sample only when shard files are absent."""
         parts = []
         for i in range(self.base, self.base + 10):
             parts.append(struct.pack(
                 RECORD_FMT,
-                i,                      # int32  id
-                float(i) * 1.1,         # double value
-                2020 + (i % 5),         # int16  year
-                i % 2,                  # uint8  flag
+                10000000 + i,
+                40.7000 + float(i) * 0.001,
+                -73.9000 - float(i) * 0.001,
+                10000 + (i % 200),
+                2020 + (i % 5),
+                i % 4,
+                i % 6,
             ))
         return b"".join(parts)
 
@@ -115,7 +150,7 @@ class TeamServicer(cluster_pb2_grpc.TeamServiceServicer):
         t0 = time.monotonic_ns()
 
         segments = [
-            cluster_pb2.Segment(payload=self._build_own_payload(), last=False)
+            cluster_pb2.Segment(payload=self._payload, last=False)
         ]
 
         for child_id, stub in self._child_stubs:
@@ -142,6 +177,7 @@ class TeamServicer(cluster_pb2_grpc.TeamServiceServicer):
         self._total_ns  += dt
 
         print(f"[{self.node_id}] Fetch base={self.base}"
+              f" local_records={len(self._payload) // RECORD_SIZE}"
               f" segs={len(segments)} dt={dt // 1000}us", flush=True)
 
         return cluster_pb2.ShardReply(segments=segments)

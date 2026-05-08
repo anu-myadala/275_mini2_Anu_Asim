@@ -17,6 +17,10 @@ BUILD="${1:?Usage: bash run_cluster.sh <build_dir> [config_path]}"
 CFG="${2:-config/nodes.yaml}"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PY_SERVER="$REPO_ROOT/src/python_server/server.py"
+PYTHON_BIN="python3"
+if [[ -x "$REPO_ROOT/venv/bin/python" ]]; then
+    PYTHON_BIN="$REPO_ROOT/venv/bin/python"
+fi
 
 if [[ ! -f "$BUILD/leader" ]]; then
     echo "ERROR: $BUILD/leader not found. Build first: cd build && cmake .. && make"
@@ -30,13 +34,15 @@ fi
 echo "=== Starting mini2 cluster ==="
 echo "    build : $BUILD"
 echo "    config: $CFG"
+echo "    python: $PYTHON_BIN"
 echo ""
 
 mkdir -p logs
 
 start_node() {
     local name="$1"; shift
-    "$@" > "logs/${name}.log" 2>&1 &
+    nohup "$@" > "logs/${name}.log" 2>&1 &
+    echo "$!" > "logs/${name}.pid"
     echo "[$name] pid=$!  log=logs/${name}.log"
 }
 
@@ -50,7 +56,7 @@ sleep 0.2
 start_node node_E  "$BUILD/team_node" E "$CFG"
 start_node node_G  "$BUILD/team_node" G "$CFG"
 start_node node_H  "$BUILD/team_node" H "$CFG"
-start_node node_I  python3 "$PY_SERVER" I "$CFG"
+start_node node_I  "$PYTHON_BIN" "$PY_SERVER" I "$CFG"
 sleep 0.2
 
 # B depends on C, D, E being up

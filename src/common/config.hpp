@@ -69,8 +69,17 @@ public:
             if (root_.empty() && !nodes_.empty())
                 root_ = nodes_.begin()->first;
 
-            // 4. BFS to build parent→children directed tree
-            buildTree();
+            // 4. Prefer an explicit directed tree when present. It keeps the
+            // experiment reproducible while still leaving topology in config.
+            if (cfg["children"]) {
+                for (auto item : cfg["children"]) {
+                    std::string parent = item.first.as<std::string>();
+                    for (auto child : item.second)
+                        children_[parent].push_back(child.as<std::string>());
+                }
+            } else {
+                buildTree();
+            }
             return true;
         } catch (...) {
             return false;

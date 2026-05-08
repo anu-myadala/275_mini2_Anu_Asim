@@ -21,7 +21,7 @@ echo "Launching $N concurrent clients with chunk_size=${SZ}B..."
 
 PIDS=()
 for i in $(seq 1 "$N"); do
-    "$BUILD/client" "$CFG" "cli${i}" "$SZ" > "$TMPDIR/cli${i}.out" 2>&1 &
+    "$BUILD/client" "$CFG" "cli${i}" "$SZ" 0 > "$TMPDIR/cli${i}.out" 2>&1 &
     PIDS+=($!)
 done
 

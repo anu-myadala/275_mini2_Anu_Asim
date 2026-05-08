@@ -14,6 +14,14 @@ overlay:
   - [A, G]
   - [A, I]
 
+# Directed scatter-gather tree used by the code. The overlay above records the
+# assignment edges; this section removes ambiguity when an overlay edge would
+# otherwise create multiple possible parents.
+children:
+  A: [B, H, G, I]
+  B: [C, D, E]
+  E: [F]
+
 roles:
   A: {role: leader}
   B: {role: team}
