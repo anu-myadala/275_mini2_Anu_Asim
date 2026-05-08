@@ -1,0 +1,45 @@
+cluster: mini2
+
+# Overlay edges exactly as specified:
+#   AB, BC, BD, BE, EF, ED, EG, AH, AG, AI
+overlay:
+  - [A, B]
+  - [B, C]
+  - [B, D]
+  - [B, E]
+  - [E, F]
+  - [E, D]
+  - [E, G]
+  - [A, H]
+  - [A, G]
+  - [A, I]
+
+roles:
+  A: {role: leader}
+  B: {role: team}
+  C: {role: team}
+  D: {role: team}
+  E: {role: team}
+  F: {role: team}
+  G: {role: team}
+  H: {role: team}
+  I: {role: team, lang: python}
+
+# Two-host deployment.
+# Update addr values with the actual IP addresses of your two machines.
+# host1: runs the leader (A) and primary team nodes.
+# host2: runs the remaining team nodes, including the Python node I.
+hosts:
+  host1: { addr: 127.0.0.1, procs: [A, B, C, D, E, F] }
+  host2: { addr: 127.0.0.1, procs: [G, H, I] }
+
+ports:
+  A: 50051
+  B: 50052
+  C: 50053
+  D: 50054
+  E: 50055
+  F: 50056
+  G: 50057
+  H: 50058
+  I: 50059

@@ -1,0 +1,10 @@
+build/
+*.o
+*.a
+*.so
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.pb.cc
+*.pb.h
