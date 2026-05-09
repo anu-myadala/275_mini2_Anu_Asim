@@ -1,4 +1,10 @@
+Launching 4 concurrent clients with chunk_size=32000B...
+
+=== Per-client summary ===
+Client       total_us   chunks   avg_rpc_us   max_rpc_us
 cli1           121275       50         2425        70184
 cli2           120889       50         2417        62902
 cli3           121798       50         2435        50136
 cli4           116823       50         2336        83528
+
+Results saved to results/fairness_4clients.txt

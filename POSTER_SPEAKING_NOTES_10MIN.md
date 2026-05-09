@@ -42,8 +42,8 @@ The client does not receive the whole result in one response unless it asks for
 a very large chunk. It calls `QueryOnce` repeatedly with an offset.
 
 For example, if the chunk size is 2 KB, the client gets a small piece of the
-result, then asks for the next offset, and keeps going. For our local 80,000
-record run, that meant 800 chunks.
+result, then asks for the next offset, and keeps going. For our two-laptop
+80,000-record run, that meant 800 chunks.
 
 If the chunk size is 512 KB, the same result comes back in only 4 chunks.
 
@@ -55,16 +55,16 @@ is heavier.
 
 The chart on the poster shows total request time by chunk size.
 
-At 2 KB, the average total time was about 423,000 microseconds, or 423
-milliseconds. At 8 KB, it dropped to about 100 milliseconds. At 32 KB, it was
-about 32 milliseconds. At 512 KB, it was about 9 milliseconds.
+At 2 KB, the average total time was about 338,000 microseconds, or 338
+milliseconds. At 8 KB, it dropped to about 91 milliseconds. At 32 KB, it was
+about 46 milliseconds. At 512 KB, it was about 44 milliseconds.
 
-That is about a 46.6 times improvement from 2 KB to 512 KB in the local loopback
+That is about a 7.7 times improvement from 2 KB to 512 KB in the final two-host
 run.
 
 The important part is not that 512 KB is always the best value. The important
-part is that the cost of repeated request-response cycles dominated the local
-run.
+part is that the cost of repeated request-response cycles still dominated, even
+when real Wi-Fi outliers made 32 KB, 128 KB, and 512 KB fairly close.
 
 ## 5:15-6:15 Fairness Result
 
@@ -73,9 +73,10 @@ We also tested fairness with four clients at the same time using 32 KB chunks.
 All four clients received 50 chunks, so the queue did prevent one client from
 running all the way to the end before the others got turns.
 
-But the finish times were not identical. One client was about 41 percent slower
-than the fastest client. So our conclusion is careful: the current queue gives
-opportunity fairness, not strict latency fairness.
+But the finish times were not identical. In the final two-host run, the slowest
+client was about 4.3 percent slower than the fastest client. So our conclusion
+is careful: the current queue gives opportunity fairness, not strict latency
+fairness.
 
 That is a good limitation to report because it shows the measurement was not
 just a success story.
@@ -97,7 +98,12 @@ changed the client to use unique request ids and changed the leader to fail the
 request if a child fetch fails.
 
 Fourth, the Python server failed under the system Python because `yaml` was not
-installed. The launcher now uses the project virtual environment if it exists.
+installed. On the second laptop, Homebrew Python also loaded the wrong expat
+library, which broke pip until we used Python 3.12 with Homebrew's expat path.
+
+Fifth, node I first warned that it was using fallback sample data. That was a
+deployment mistake: the real shards had not been copied into the expected folder
+yet. We copied the shards and restarted node I before collecting final numbers.
 
 The newest failure test is also useful. If node H is down before a new request,
 the client gets a clear child-fetch error. But if H dies after A has already
@@ -120,22 +126,19 @@ From failure and balance, we chose a fail-fast behavior. Since the assignment
 does not use replication, if a child node is down, returning a clear error is
 better than returning a partial answer that looks successful.
 
-## 8:30-9:30 Two-Computer Run Plan
+## 8:30-9:30 Two-Computer Run
 
-The local result is not the final result. The final run needs two physical
-computers.
+The final run used two physical computers.
 
-For that run, we will put A-F on host1 and G-I on host2. Then we will run the
-same chunk sweep with at least 15 runs per chunk size, following the course
-notes.
+For that run, we put A-F on host1 and G-I on host2. Then we ran the same chunk
+sweep with 30 runs per chunk size, following the course notes.
 
-I expect the absolute latency to be higher because now traffic crosses the
-network. But the trend should still show that chunk size controls the number of
-round trips.
+The absolute latency was higher and noisier because traffic crossed Wi-Fi. But
+the trend still showed that chunk size controls the number of round trips.
 
-We will also do two failure runs: one with H down before a new request, and one
-where H dies after the first page is already cached. The difference between
-those two runs is part of the learning, not something to hide.
+We also ran the H-down-before-request failure test. The client got a clear child
+fetch error instead of partial data, which is the behavior we wanted for
+correctness.
 
 ## 9:30-10:00 Closing
 

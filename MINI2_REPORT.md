@@ -51,26 +51,34 @@ The 311 CSV is converted into one binary shard per node. Each record is:
 The packed record is 20 bytes. This is the Mini 1 data-density lesson applied
 directly: avoid `std::string` payloads and avoid `double` when `float` is enough.
 
-## Local Results
+## Results
 
-For local validation, we generated 90,000 rows from the real 13 GB NYC 311 CSV.
-A is leader-only, so the query returns 80,000 records from B-I.
+For validation, we generated 90,000 rows from the real NYC 311 CSV. A is
+leader-only, so the query returns 80,000 records from B-I. The final run split
+the cluster across two laptops on the same Wi-Fi:
+
+```text
+host1: A, B, C, D, E, F, client
+host2: G, H, I
+```
 
 The course notes recommend averaging 15-30 runs and discarding clear outliers.
-The table below is a three-run local debug pass. The final two-computer table
-should be collected with at least 15 runs per chunk size.
+The table below uses 30 runs per chunk size.
 
 | Chunk bytes | Avg total us | Avg chunks | Avg RPC us |
 |---:|---:|---:|---:|
-| 2000 | 423093 | 800 | 528 |
-| 8000 | 100274 | 200 | 501 |
-| 32000 | 31579 | 50 | 631 |
-| 128000 | 19446 | 13 | 1496 |
-| 512000 | 9073 | 4 | 2268 |
+| 2000 | 337844 | 800 | 422 |
+| 8000 | 91303 | 200 | 456 |
+| 32000 | 45748 | 50 | 914 |
+| 128000 | 47482 | 13 | 3652 |
+| 512000 | 44046 | 4 | 11011 |
 
-The largest chunks finished about 46.6x faster than 2 KB chunks on loopback
-because they reduced the number of client-leader round trips from 800 to 4.
-The cost is higher per-call latency and larger per-response memory pressure.
+The largest chunks finished about 7.7x faster than 2 KB chunks because they
+reduced the number of client-leader round trips from 800 to 4. The cost is
+higher per-call latency and larger per-response memory pressure. The 32 KB,
+128 KB, and 512 KB results were close on Wi-Fi, which is a useful reminder that
+network outliers can flatten a benchmark curve even when the round-trip-count
+trend is clear.
 
 ## Fairness
 
@@ -78,15 +86,16 @@ With four clients at 32 KB chunks, each client received 50 chunks.
 
 | Client | Total us | Chunks | Avg RPC us | Max RPC us |
 |---|---:|---:|---:|---:|
-| cli1 | 91514 | 50 | 1830 | 15658 |
-| cli2 | 128746 | 50 | 2574 | 20441 |
-| cli3 | 96256 | 50 | 1925 | 29361 |
-| cli4 | 97142 | 50 | 1942 | 24460 |
+| cli1 | 121275 | 50 | 2425 | 70184 |
+| cli2 | 120889 | 50 | 2417 | 62902 |
+| cli3 | 121798 | 50 | 2435 | 50136 |
+| cli4 | 116823 | 50 | 2336 | 83528 |
 
 The fair queue balances chunk turns, but it does not guarantee identical
-end-to-end latency. cli2 finished slower in this run, so the honest conclusion
-is that the current design improves opportunity fairness but not strict latency
-fairness.
+end-to-end latency. In the two-host run, all four clients received 50 chunks and
+the slowest client was about 4.3% slower than the fastest client. The honest
+conclusion is that the current design improves opportunity fairness but does
+not prove strict latency fairness.
 
 ## Failures and Fixes
 
@@ -107,6 +116,16 @@ The Python node failed under the system Python because `yaml` was not installed.
 The launcher now chooses `venv/bin/python` when the project virtual environment
 exists.
 
+The host2 Python setup exposed a lower-level environment problem: Homebrew
+Python loaded macOS's older `libexpat`, which broke `ensurepip` and prevented
+`grpcio` from installing. We fixed the run by using Python 3.12 and launching
+node I with Homebrew's expat library path.
+
+The first host2 Python run also warned that it was using fallback sample data.
+The cause was that `shards/` had not been copied into the expected project
+directory yet. We copied the real shards to host2 and restarted node I before
+collecting final numbers.
+
 Our first benchmark settings included one-record chunks. That was useful as a
 stress case, but it made normal result collection too slow and hid the main
 payload-size trend. The benchmark script now uses practical chunk sizes by
@@ -117,21 +136,17 @@ made 128 KB and 512 KB tests misleading. The cap is now 1 MB, so the sweep
 actually measures large payloads.
 
 One important limitation remains: the fair queue schedules equal chunk turns,
-not equal finish times. In the four-client run, each client completed 50 chunks,
-but cli2 still finished about 41% slower than cli1.
+not equal finish times. In the four-client two-host run, each client completed
+50 chunks, but cli3 still finished about 4.3% slower than cli4.
 
 Failure timing also mattered. If H is down before a new request starts, A fails
-the request clearly instead of returning a partial answer. In local verification,
-the client received `child fetch failed: H`. If H dies after A has already
+the request clearly instead of returning a partial answer. In two-host
+verification, the client received `child fetch failed: H`. If H dies after A has already
 gathered and cached the first page, the same request can still finish from
 cache. This is a real design tradeoff: caching protects an active request after
 gather, but it increases memory pressure at A.
 
 ## What Is Still Missing for the Final Submission
-
-Run the same benchmark on two physical computers and add the numbers beside the
-local loopback table. The professor explicitly asked for at least two computers.
-Use at least 15 runs per chunk size; 30 is better if time allows.
 
 Run a larger shard generation, ideally millions of records if time allows:
 
@@ -139,9 +154,10 @@ Run a larger shard generation, ideally millions of records if time allows:
 ./scripts/make_shards.py "/path/to/311.csv" --limit 9000000 --out-dir shards
 ```
 
-Add one failure experiment with H down before a new request and one experiment
-where H is killed after the first page is cached. Do not hide the difference;
-it is one of the more interesting distributed-systems lessons in the project.
+The two-computer benchmark, fairness run, and H-down failure test are complete.
+If time allows, add one more experiment where H is killed after the first page is
+cached. Do not hide the difference; it is one of the more interesting
+distributed-systems lessons in the project.
 
 ## Notes and Course Concepts Used
 
@@ -158,10 +174,11 @@ cannot be reached.
 
 Use one focused poster point:
 
-**Chunk size is the control knob: on our local 80,000-record run, moving from
-2 KB chunks to 512 KB chunks reduced total request time from 423 ms to 9 ms,
-but that conclusion only became trustworthy after we fixed port collisions,
-tree ambiguity, and partial-result caching.**
+**Chunk size is the control knob: on our two-laptop 80,000-record run, moving
+from 2 KB chunks to 512 KB chunks reduced average total request time from
+338 ms to 44 ms, but that conclusion only became trustworthy after we fixed port
+collisions, tree ambiguity, partial-result caching, Python environment issues,
+and missing shard deployment.**
 
 That is stronger than a general architecture summary because it has a claim,
 evidence, failures, and a tradeoff.

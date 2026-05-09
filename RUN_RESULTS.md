@@ -35,37 +35,34 @@ Smoke result:
 ## How Many Runs
 
 The notes recommend testing 15-30 times to form an average and discarding clear
-outliers. For the final two-computer run, use:
+outliers. For the final two-computer run, we used:
 
-- 15 runs per chunk size as the minimum final table.
-- 30 runs per chunk size if there is enough time.
+- 30 runs per chunk size for the final chunk-sweep table.
 - 3 runs only for smoke testing while debugging.
-
-The local table below used 3 runs because it was a quick verification pass. Do
-not present it as the final experimental count after the two-computer run.
 
 ## Chunk Sweep
 
-Command:
+Final two-host command:
 
 ```bash
-bash benchmark.sh build config/nodes.yaml 15 | tee results/chunk_sweep_2host.tsv
+bash benchmark.sh build config/nodes.yaml 30 | tee results/chunk_sweep_2host_30runs.tsv
 ```
 
-Local debug average of three runs:
+Two-host average of 30 runs per chunk size:
 
 | Chunk bytes | Avg total us | Avg chunks | Avg RPC us | Min RPC us | Max RPC us |
 |---:|---:|---:|---:|---:|---:|
-| 2000 | 423093 | 800 | 528 | 223 | 19252 |
-| 8000 | 100274 | 200 | 501 | 219 | 9169 |
-| 32000 | 31579 | 50 | 631 | 335 | 7085 |
-| 128000 | 19446 | 13 | 1496 | 450 | 11862 |
-| 512000 | 9073 | 4 | 2268 | 334 | 7119 |
+| 2000 | 337844 | 800 | 422 | 155 | 151171 |
+| 8000 | 91303 | 200 | 456 | 155 | 92230 |
+| 32000 | 45748 | 50 | 914 | 176 | 71574 |
+| 128000 | 47482 | 13 | 3652 | 208 | 113591 |
+| 512000 | 44046 | 4 | 11011 | 311 | 130184 |
 
 Takeaway: increasing chunk size reduces total wall time because it reduces the
-number of client-leader round trips. The largest chunks have higher per-RPC
-latency, but the total request finishes faster because only four chunks are
-needed.
+number of client-leader round trips. On the two-laptop run, 512 KB was the
+fastest average, but 32 KB and 128 KB were close. The max RPC column shows the
+cost of Wi-Fi outliers and cold first requests; those spikes are why averaging
+30 runs is more reliable than judging a single request.
 
 ## Fairness Run
 
@@ -77,16 +74,17 @@ bash benchmark_fairness.sh build config/nodes.yaml 4 32000
 
 | Client | Total us | Chunks | Avg RPC us | Max RPC us |
 |---|---:|---:|---:|---:|
-| cli1 | 91514 | 50 | 1830 | 15658 |
-| cli2 | 128746 | 50 | 2574 | 20441 |
-| cli3 | 96256 | 50 | 1925 | 29361 |
-| cli4 | 97142 | 50 | 1942 | 24460 |
+| cli1 | 121275 | 50 | 2425 | 70184 |
+| cli2 | 120889 | 50 | 2417 | 62902 |
+| cli3 | 121798 | 50 | 2435 | 50136 |
+| cli4 | 116823 | 50 | 2336 | 83528 |
 
 Observation: all clients completed the same 50 chunks. The scheduler prevents a
-single client from consuming the whole response stream first, but cli2 was about
-41% slower than cli1 in this run. That should be reported as a limitation:
-the current fairness policy balances chunk opportunities, not exact end-to-end
-latency.
+single client from consuming the whole response stream first. In the two-host
+run, the slowest client was about 4.3% slower than the fastest client. The
+current fairness policy balances chunk opportunities, not exact end-to-end
+latency, so this is a good metric to report instead of claiming perfect
+fairness.
 
 ## Failures Found During Verification
 
@@ -108,9 +106,22 @@ latency.
   actually test larger payload behavior. Fix: the cap is now 1 MB.
 - The launcher started processes correctly, but background jobs could disappear
   when the shell closed. Fix: `run_cluster.sh` now uses `nohup` and PID files.
-- The local fairness run showed cli2 about 41% slower than cli1 even though all
+- The early local fairness run had a much wider client spread even though all
   clients received 50 chunks. This is not hidden in the report: our queue
   balances turns, not exact wall-clock completion time.
+- The final two-host fairness run was much tighter: the slowest client was
+  about 4.3% slower than the fastest, while all clients still received 50
+  chunks.
+- On host2, Homebrew Python initially loaded macOS's older `libexpat` instead
+  of Homebrew's `expat`, which broke `ensurepip` and prevented `grpcio` from
+  installing. Fix: use Python 3.12 and run the Python node with
+  `DYLD_LIBRARY_PATH=/opt/homebrew/opt/expat/lib:$DYLD_LIBRARY_PATH`.
+- The first host2 Python run used fallback sample data because `shards/` was not
+  present in the expected project directory yet. Fix: copy the full `shards/`
+  directory to host2 before starting node I and restart node I after copying.
+- Host2 initially refused `rsync` because Remote Login/SSH was off. Fix: either
+  enable Remote Login for user `sasank` or send `shards.zip` by AirDrop and
+  unzip it into the project root.
 
 ## Two-Computer Run Checklist
 
@@ -121,8 +132,8 @@ latency.
 
 ```yaml
 hosts:
-  host1: { addr: 192.168.1.10, procs: [A, B, C, D, E, F] }
-  host2: { addr: 192.168.1.20, procs: [G, H, I] }
+  host1: { addr: 192.168.1.139, procs: [A, B, C, D, E, F] }
+  host2: { addr: 192.168.1.118, procs: [G, H, I] }
 ```
 
 4. On host2, start G, H, and I first:
@@ -179,7 +190,9 @@ Expected behavior: the client receives an RPC error instead of a partial result.
 In local verification, the error was:
 
 ```text
-RPC error: child fetch failed: H: failed to connect to all addresses
+RPC error: child fetch failed: H: failed to connect to all addresses; last error:
+UNKNOWN: ipv4:192.168.1.118:50058: Failed to connect to remote host:
+Connection refused
 ```
 
 Case B: H dies after the first chunk of the same request. This may still finish

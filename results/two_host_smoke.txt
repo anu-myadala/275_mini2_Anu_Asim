@@ -1,0 +1,61 @@
+Client 'two_host_smoke' -> leader at 192.168.1.139:50051  chunk=32000B
+  chunk 1 (off=0) dt=197958us
+  chunk 2 (off=32000) dt=528us
+  chunk 3 (off=64000) dt=378us
+  chunk 4 (off=96000) dt=386us
+  chunk 5 (off=128000) dt=294us
+  chunk 6 (off=160000) dt=918us
+  chunk 7 (off=192000) dt=1407us
+  chunk 8 (off=224000) dt=364us
+  chunk 9 (off=256000) dt=348us
+  chunk 10 (off=288000) dt=574us
+  chunk 11 (off=320000) dt=633us
+  chunk 12 (off=352000) dt=455us
+  chunk 13 (off=384000) dt=191us
+  chunk 14 (off=416000) dt=380us
+  chunk 15 (off=448000) dt=462us
+  chunk 16 (off=480000) dt=482us
+  chunk 17 (off=512000) dt=805us
+  chunk 18 (off=544000) dt=377us
+  chunk 19 (off=576000) dt=414us
+  chunk 20 (off=608000) dt=540us
+  chunk 21 (off=640000) dt=434us
+  chunk 22 (off=672000) dt=354us
+  chunk 23 (off=704000) dt=579us
+  chunk 24 (off=736000) dt=256us
+  chunk 25 (off=768000) dt=324us
+  chunk 26 (off=800000) dt=460us
+  chunk 27 (off=832000) dt=436us
+  chunk 28 (off=864000) dt=548us
+  chunk 29 (off=896000) dt=781us
+  chunk 30 (off=928000) dt=731us
+  chunk 31 (off=960000) dt=440us
+  chunk 32 (off=992000) dt=355us
+  chunk 33 (off=1024000) dt=334us
+  chunk 34 (off=1056000) dt=249us
+  chunk 35 (off=1088000) dt=497us
+  chunk 36 (off=1120000) dt=367us
+  chunk 37 (off=1152000) dt=423us
+  chunk 38 (off=1184000) dt=533us
+  chunk 39 (off=1216000) dt=435us
+  chunk 40 (off=1248000) dt=449us
+  chunk 41 (off=1280000) dt=500us
+  chunk 42 (off=1312000) dt=327us
+  chunk 43 (off=1344000) dt=306us
+  chunk 44 (off=1376000) dt=379us
+  chunk 45 (off=1408000) dt=320us
+  chunk 46 (off=1440000) dt=246us
+  chunk 47 (off=1472000) dt=347us
+  chunk 48 (off=1504000) dt=356us
+  chunk 49 (off=1536000) dt=386us
+  chunk 50 (off=1568000) dt=442us
+
+=== Summary for client 'two_host_smoke' ===
+  records    : 80000
+  printed    : 0
+  chunks     : 50
+  chunk_size : 32000 B
+  total_rpc  : 220511 us
+  avg_rpc    : 4410 us
+  min_rpc    : 191 us
+  max_rpc    : 197958 us

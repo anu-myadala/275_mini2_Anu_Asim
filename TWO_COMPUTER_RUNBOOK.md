@@ -115,13 +115,14 @@ is that the executable exists.
 If `shards/` already exists on your laptop, copy it to the same project path on
 host2.
 
-From host1:
+From host1, with your current host2 username and IP:
 
 ```bash
-rsync -av shards/ USERNAME@HOST2_IP:/path/to/anu--asim-275-mini-2/shards/
+rsync -av shards/ sasank@192.168.1.118:/Users/sasank/275_mini2_Anu_Asim/shards/
 ```
 
-Replace `USERNAME`, `HOST2_IP`, and the path.
+If his project is in a different folder, keep `sasank@192.168.1.118` and change
+only the path after the colon.
 
 If copying is annoying, generate the shards on both laptops using the same CSV
 and same limit:

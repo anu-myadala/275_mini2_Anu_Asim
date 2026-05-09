@@ -15,7 +15,7 @@ from pptx.util import Inches as PptInches, Pt as PptPt
 
 ROOT = Path(__file__).resolve().parents[1]
 CHUNKS = [2000, 8000, 32000, 128000, 512000]
-TOTAL_US = [423093, 100274, 31579, 19446, 9073]
+TOTAL_US = [337844, 91303, 45748, 47482, 44046]
 
 
 def add_heading(doc, text, level=1):
@@ -71,9 +71,9 @@ def make_docx():
     add_para(doc, "Each 311 row is stored as a compact 20-byte record: unique key, latitude, longitude, incident zip, created year, status code, and borough code.")
 
     add_heading(doc, "Measurement Plan", 1)
-    add_para(doc, "The course notes recommend 15-30 runs to form an average and discard clear outliers. The local table below is a three-run debug pass; the final two-computer run should use at least 15 runs per chunk size.")
+    add_para(doc, "The course notes recommend 15-30 runs to form an average and discard clear outliers. The final table below uses 30 runs per chunk size on two laptops.")
 
-    add_heading(doc, "Local Debug Results", 1)
+    add_heading(doc, "Two-Host Results", 1)
     table = doc.add_table(rows=1, cols=4)
     table.style = "Table Grid"
     hdr = table.rows[0].cells
@@ -82,21 +82,21 @@ def make_docx():
     hdr[2].text = "Avg chunks"
     hdr[3].text = "Avg RPC us"
     rows = [
-        (2000, 423093, 800, 528),
-        (8000, 100274, 200, 501),
-        (32000, 31579, 50, 631),
-        (128000, 19446, 13, 1496),
-        (512000, 9073, 4, 2268),
+        (2000, 337844, 800, 422),
+        (8000, 91303, 200, 456),
+        (32000, 45748, 50, 914),
+        (128000, 47482, 13, 3652),
+        (512000, 44046, 4, 11011),
     ]
     for row in rows:
         cells = table.add_row().cells
         for i, value in enumerate(row):
             cells[i].text = str(value)
 
-    add_para(doc, "Result: 512 KB chunks completed the same 80,000-record response about 46.6x faster than 2 KB chunks on loopback because the client needed 4 chunks instead of 800.")
+    add_para(doc, "Result: 512 KB chunks completed the same 80,000-record response about 7.7x faster than 2 KB chunks across two laptops because the client needed 4 chunks instead of 800. The 32 KB, 128 KB, and 512 KB results were close because Wi-Fi introduced large outliers.")
 
     add_heading(doc, "Fairness Result", 1)
-    add_para(doc, "Four clients at 32 KB chunks each completed 50 chunks. The slowest client was about 41% slower than the fastest, so the queue balances chunk turns but does not guarantee identical wall-clock finish times.")
+    add_para(doc, "Four clients at 32 KB chunks each completed 50 chunks. The slowest client was about 4.3% slower than the fastest, so the queue balances chunk turns but does not guarantee identical wall-clock finish times.")
 
     add_heading(doc, "Failures Found and Fixed", 1)
     failures = [
@@ -105,6 +105,8 @@ def make_docx():
         "Partial child failures could be cached. Child fetch failures now fail the request.",
         "Client request ids were reused. They now include a per-run timestamp.",
         "The Python node failed under system Python without yaml. The launcher now uses venv/bin/python when available.",
+        "Host2 Homebrew Python loaded macOS's older libexpat, which broke ensurepip. We used Python 3.12 with Homebrew's expat path.",
+        "Node I initially used fallback sample data until we copied the real shards to host2 and restarted the node.",
         "The first benchmark included one-record chunks, which was too slow for normal iteration. Tiny chunks are now opt-in.",
         "Large requested chunks were clamped to 64 KB. The cap is now 1 MB.",
         "With H down before a new request, the client fails clearly. If H dies after A has cached the gathered result, that same request can still finish from cache.",
@@ -113,7 +115,7 @@ def make_docx():
         doc.add_paragraph(item, style="List Bullet")
 
     add_heading(doc, "Remaining Final Work", 1)
-    add_para(doc, "Run the final chunk sweep on two physical computers with at least 15 runs per chunk size. Run both H-down failure cases: before a new request and after the first page is cached.")
+    add_para(doc, "The two-computer chunk sweep, fairness run, and H-down failure test are complete. If time allows, repeat with a larger shard set and add the mid-request H failure case after the first page is cached.")
 
     doc.save(ROOT / "mini2-report.docx")
 
@@ -169,19 +171,19 @@ def make_poster():
 
     box(PptInches(8.05), PptInches(1.45), PptInches(4.8), PptInches(1.25), RGBColor(20, 31, 47))
     metric = slide.shapes.add_textbox(PptInches(8.35), PptInches(1.6), PptInches(4.2), PptInches(0.85))
-    metric.text_frame.text = "46.6x faster"
+    metric.text_frame.text = "7.7x faster"
     metric.text_frame.paragraphs[0].font.size = PptPt(38)
     metric.text_frame.paragraphs[0].font.bold = True
     metric.text_frame.paragraphs[0].font.color.rgb = RGBColor(255, 210, 92)
 
     note = slide.shapes.add_textbox(PptInches(8.35), PptInches(2.35), PptInches(4.2), PptInches(0.35))
-    note.text_frame.text = "512 KB chunks vs. 2 KB chunks, same 80,000 records"
+    note.text_frame.text = "512 KB chunks vs. 2 KB chunks, two laptops, 80,000 records"
     note.text_frame.paragraphs[0].font.size = PptPt(11)
     note.text_frame.paragraphs[0].font.color.rgb = RGBColor(198, 208, 224)
 
     box(PptInches(8.05), PptInches(3.0), PptInches(4.8), PptInches(1.55), RGBColor(20, 31, 47))
     caveat = slide.shapes.add_textbox(PptInches(8.35), PptInches(3.16), PptInches(4.25), PptInches(1.16))
-    caveat.text_frame.text = "Validation failures caught:\nport collision | partial tree | cached partial result"
+    caveat.text_frame.text = "Validation failures caught:\nport collision | partial tree | cached partial result | Python env | missing shards"
     for p in caveat.text_frame.paragraphs:
         p.font.size = PptPt(14)
         p.font.bold = True
@@ -195,7 +197,7 @@ def make_poster():
         p.font.color.rgb = RGBColor(220, 230, 242)
 
     footer = slide.shapes.add_textbox(PptInches(0.55), PptInches(6.82), PptInches(12.2), PptInches(0.3))
-    footer.text_frame.text = "Tradeoff: fewer round trips, larger buffers. Local debug: 3 runs; final two-computer run: 15-30 runs."
+    footer.text_frame.text = "Tradeoff: fewer round trips, larger buffers. Final two-computer run: 30 runs per chunk size."
     footer.text_frame.paragraphs[0].font.size = PptPt(11)
     footer.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
 
