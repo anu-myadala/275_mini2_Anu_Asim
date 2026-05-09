@@ -1,5 +1,8 @@
 # Mini 2 Run Results
 
+For the detailed two-laptop procedure, use `TWO_COMPUTER_RUNBOOK.md`. This
+file is for the measured results and final observations.
+
 Dataset used locally: NYC 311 CSV converted into binary shards with:
 
 ```bash
