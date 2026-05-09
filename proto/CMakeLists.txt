@@ -1,14 +1,32 @@
 find_package(Protobuf REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 
-# Locate protoc and the gRPC plugin without hardcoding paths.
-# On most systems gRPC::grpc_cpp_plugin is exported by the gRPC CMake package;
-# fall back to searching PATH if not.
+# Locate protoc and the gRPC plugin. Some Homebrew gRPC installs export the
+# plugin target but leave IMPORTED_LOCATION unset, so verify the path before
+# using it.
+unset(_GRPC_CPP_PLUGIN_EXECUTABLE CACHE)
+set(_GRPC_CPP_PLUGIN "")
 if(TARGET gRPC::grpc_cpp_plugin)
-    get_target_property(_GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin IMPORTED_LOCATION)
-else()
-    find_program(_GRPC_CPP_PLUGIN grpc_cpp_plugin REQUIRED)
+    get_target_property(_GRPC_CPP_PLUGIN_FROM_TARGET
+        gRPC::grpc_cpp_plugin IMPORTED_LOCATION)
+    if(NOT _GRPC_CPP_PLUGIN_FROM_TARGET)
+        get_target_property(_GRPC_CPP_PLUGIN_FROM_TARGET
+            gRPC::grpc_cpp_plugin IMPORTED_LOCATION_RELEASE)
+    endif()
+    if(_GRPC_CPP_PLUGIN_FROM_TARGET AND EXISTS "${_GRPC_CPP_PLUGIN_FROM_TARGET}")
+        set(_GRPC_CPP_PLUGIN "${_GRPC_CPP_PLUGIN_FROM_TARGET}")
+    endif()
 endif()
+
+if(NOT _GRPC_CPP_PLUGIN)
+    find_program(_GRPC_CPP_PLUGIN_EXECUTABLE
+        NAMES grpc_cpp_plugin
+        HINTS /opt/homebrew/bin /usr/local/bin
+        REQUIRED)
+    set(_GRPC_CPP_PLUGIN "${_GRPC_CPP_PLUGIN_EXECUTABLE}")
+endif()
+
+message(STATUS "Using grpc_cpp_plugin: ${_GRPC_CPP_PLUGIN}")
 
 set(_PROTOBUF_PROTOC ${Protobuf_PROTOC_EXECUTABLE})
 

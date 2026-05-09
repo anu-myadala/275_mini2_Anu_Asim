@@ -74,11 +74,11 @@ If that prints nothing, try:
 ifconfig | grep "inet " | grep -v 127.0.0.1
 ```
 
-Example:
+Your current two-laptop setup:
 
 ```text
-host1 your laptop:        192.168.1.10
-host2 husband's laptop:   192.168.1.20
+host1 your laptop:        192.168.1.139
+host2 husband's laptop:   192.168.1.118
 ```
 
 Write the real values into `results/two_host_notes.md`.
@@ -147,8 +147,8 @@ Example:
 
 ```yaml
 hosts:
-  host1: { addr: 192.168.1.10, procs: [A, B, C, D, E, F] }
-  host2: { addr: 192.168.1.20, procs: [G, H, I] }
+  host1: { addr: 192.168.1.139, procs: [A, B, C, D, E, F] }
+  host2: { addr: 192.168.1.118, procs: [G, H, I] }
 ```
 
 Do not leave both addresses as `127.0.0.1` for the two-computer run. That only
@@ -519,4 +519,3 @@ Depth points your professor is likely to care about:
   claiming it fully solves fairness.
 - Failure behavior should be explicit: partial data is worse than a clear error
   for this dataset query.
-

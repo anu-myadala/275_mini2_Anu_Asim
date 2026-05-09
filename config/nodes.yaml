@@ -38,8 +38,8 @@ roles:
 # host1: runs the leader (A) and primary team nodes.
 # host2: runs the remaining team nodes, including the Python node I.
 hosts:
-  host1: { addr: 127.0.0.1, procs: [A, B, C, D, E, F] }
-  host2: { addr: 127.0.0.1, procs: [G, H, I] }
+  host1: { addr: 192.168.1.139, procs: [A, B, C, D, E, F] }
+  host2: { addr: 192.168.1.118, procs: [G, H, I] }
 
 ports:
   A: 50051
