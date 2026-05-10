@@ -3,7 +3,7 @@
 This is the exact checklist for running Mini 2 on two laptops on the same
 Wi-Fi/network, collecting results, and recording failures. Use your laptop as
 `host1` and your husband's laptop as `host2`.
-
+ 
 ## Goal
 
 The final experiment should show that the same distributed overlay works when
