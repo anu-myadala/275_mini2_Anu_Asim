@@ -13,7 +13,7 @@ host1:
 - role: A, B, C, D, E, F, client
 
 host2:
-- owner: Sasank
+- owner: second laptop
 - model: MacBook Air
 - OS: macOS
 - CPU: Apple Silicon

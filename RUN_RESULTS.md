@@ -120,7 +120,7 @@ fairness.
   present in the expected project directory yet. Fix: copy the full `shards/`
   directory to host2 before starting node I and restart node I after copying.
 - Host2 initially refused `rsync` because Remote Login/SSH was off. Fix: either
-  enable Remote Login for user `sasank` or send `shards.zip` by AirDrop and
+  enable Remote Login for the host2 user or send `shards.zip` by AirDrop and
   unzip it into the project root.
 
 ## Two-Computer Run Checklist

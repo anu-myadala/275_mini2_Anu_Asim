@@ -10,3 +10,4 @@ logs/
 shards/*.bin
 *.pb.cc
 *.pb.h
+.DS_Store

@@ -52,7 +52,7 @@ def make_docx():
 
     subtitle = doc.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    subtitle.add_run("Anukrithi Myadala, Ali Ucer, Asim Mohammed").italic = True
+    subtitle.add_run("Anukrithi Myadala, Asim Mohammed").italic = True
 
     add_heading(doc, "Research Question", 1)
     add_para(doc, "How does chunk size affect a distributed, sharded 311 result set when A is the only client-facing process?")
