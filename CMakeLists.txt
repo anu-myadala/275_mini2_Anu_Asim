@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 
-find_package(gRPC     CONFIG REQUIRED)
+find_package(gRPC     CONFIG REQUIRED) 
 find_package(yaml-cpp REQUIRED)
 
 include_directories(${CMAKE_BINARY_DIR}/proto)
