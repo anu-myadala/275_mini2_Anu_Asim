@@ -69,6 +69,17 @@ def make_docx():
     add_heading(doc, "Design", 1)
     add_para(doc, "The cluster uses a configured scatter-gather tree: A -> B,H,G,I; B -> C,D,E; E -> F. A is the only public entry point. B-I own typed binary shards, and I is implemented in Python.")
     add_para(doc, "Each 311 row is stored as a compact 20-byte record: unique key, latitude, longitude, incident zip, created year, status code, and borough code.")
+    add_para(doc, "The design uses unary gRPC calls with explicit offsets. A streaming prototype was dropped because the assignment required non-streaming gRPC and the explicit offsets made failure behavior easier to test.")
+
+    add_heading(doc, "Course and Lab Ideas Used", 1)
+    for item in [
+        "The basic gRPC lab shaped the protobuf/service structure.",
+        "The leader labs shaped A as the only public coordinator.",
+        "Socket and messaging lectures motivated the chunk-size experiment.",
+        "The sharding lecture motivated splitting the binary data across B-I.",
+        "MPI round/baton-style labs influenced the fairness test.",
+    ]:
+        doc.add_paragraph(item, style="List Bullet")
 
     add_heading(doc, "Measurement Plan", 1)
     add_para(doc, "The course notes recommend 15-30 runs to form an average and discard clear outliers. The final table below uses 30 runs per chunk size on two laptops.")
@@ -100,10 +111,13 @@ def make_docx():
 
     add_heading(doc, "Failures Found and Fixed", 1)
     failures = [
+        "Early per-RPC channel/stub setup made the prototype measure setup overhead too much. Child stubs are now created once during startup.",
+        "A streaming/async detour was abandoned because the final design needed unary gRPC and clearer failure behavior.",
         "Old processes were already bound to ports 50051, 50052, and 50058, causing the client to hit the wrong server.",
         "The first tree derivation only contacted B's subtree. The directed tree is now explicit in nodes.yaml.",
         "Partial child failures could be cached. Child fetch failures now fail the request.",
         "Client request ids were reused. They now include a per-run timestamp.",
+        "Python and C++ initially had to be checked carefully for exact binary record size and field order. The final record is a validated 20-byte layout.",
         "The Python node failed under system Python without yaml. The launcher now uses venv/bin/python when available.",
         "Host2 Homebrew Python loaded macOS's older libexpat, which broke ensurepip. We used Python 3.12 with Homebrew's expat path.",
         "Node I initially used fallback sample data until we copied the real shards to host2 and restarted the node.",
@@ -114,8 +128,21 @@ def make_docx():
     for item in failures:
         doc.add_paragraph(item, style="List Bullet")
 
-    add_heading(doc, "Remaining Final Work", 1)
-    add_para(doc, "The two-computer chunk sweep, fairness run, and H-down failure test are complete. If time allows, repeat with a larger shard set and add the mid-request H failure case after the first page is cached.")
+    add_heading(doc, "Conclusion", 1)
+    add_para(doc, "The final result supports one focused conclusion: chunk size changed total request time mainly by changing the number of client-leader round trips. The fastest result was useful, but it only became trustworthy after we fixed port collisions, topology mistakes, cache behavior, Python setup problems, missing shard deployment, and benchmark defaults.")
+
+    add_heading(doc, "Individual Contributions", 1)
+    add_para(doc, "Anukrithi Myadala focused on Mini 1 feedback analysis, runbooks, two-computer setup, result collection, report, and presentation framing. Asim Mohammed contributed to the cluster/protobuf implementation and helped with final code cleanup and validation.")
+
+    add_heading(doc, "References", 1)
+    for item in [
+        "NYC Open Data 311 Service Requests dataset.",
+        "Course lectures on messaging/socket costs, sharding, parallelism, failure behavior, and benchmarking.",
+        "Course labs covering basic gRPC, leader coordination, MPI round/baton behavior, and sockets.",
+        "gRPC and Protocol Buffers documentation for unary service structure and typed messages.",
+        "Data structure alignment notes used after Mini 1 feedback.",
+    ]:
+        doc.add_paragraph(item, style="List Bullet")
 
     doc.save(ROOT / "mini2-report.docx")
 

@@ -22,8 +22,8 @@ brew install cmake grpc protobuf yaml-cpp
 
 ### Python side (node I)
 ```bash
-cd src/python_server
-pip install grpcio grpcio-tools pyyaml
+python3 -m venv venv
+venv/bin/python -m pip install -r src/python_server/requirements.txt
 ```
 
 If the proto stubs need to be regenerated:
@@ -123,10 +123,10 @@ for sz in 2000 8000 32000 128000 512000; do
 done
 ```
 
-For final results, use the benchmark script with at least 15 runs:
+For final results, use the benchmark script with 30 runs:
 
 ```bash
-bash benchmark.sh build config/nodes.yaml 15 | tee results/chunk_sweep_2host.tsv
+bash benchmark.sh build config/nodes.yaml 30 | tee results/chunk_sweep_2host_30runs.tsv
 ```
 
 ---

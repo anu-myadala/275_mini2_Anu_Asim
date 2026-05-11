@@ -84,23 +84,23 @@ Runs several clients at once to see whether one client starves the others.
 
 ## What The Results Mean
 
-For the local debug run, we used 80,000 returned records.
+For the final two-computer run, we used 80,000 returned records.
 
 Small chunks:
 
 ```text
-2 KB chunks -> 800 chunks -> about 423 ms total
+2 KB chunks -> 800 chunks -> about 338 ms total
 ```
 
 Large chunks:
 
 ```text
-512 KB chunks -> 4 chunks -> about 9 ms total
+512 KB chunks -> 4 chunks -> about 44 ms total
 ```
 
 The meaning is not "always use giant chunks." The meaning is: the number of
-round trips dominates local performance. Larger chunks reduce round trips, but
-they also increase memory per response and may hurt fairness under load.
+round trips dominated the two-laptop result. Larger chunks reduce round trips,
+but they also increase memory per response and may hurt fairness under load.
 
 ## Why This Connects To Class
 

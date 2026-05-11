@@ -5,6 +5,11 @@
 Chunk size is the control knob, but validation is what made the result
 trustworthy.
 
+This should be treated like a poster, not a project-summary slide. The class
+should walk away with one finding: our fastest chunk-size curve looked simple,
+but it was only believable after we caught setup and correctness failures that
+would have made the benchmark lie.
+
 ## Use This Figure
 
 Make a bar chart from `results/chunk_sweep_2host_30runs.tsv`:
@@ -35,9 +40,13 @@ pressure, not only raw speed.
 
 The poster should mention the failures that would have made the graph wrong:
 
+- Early per-RPC stub/channel setup made a prototype measure setup overhead.
+- A streaming/async detour was dropped because the assignment wanted unary gRPC
+  and explicit chunking.
 - An old process on the same port made the client talk to the wrong server.
 - Ambiguous tree derivation meant A only queried B's subtree at first.
 - Partial child failures could be cached until we changed them to fail fast.
+- Python/C++ binary record mismatches made us validate the 20-byte layout.
 - Host2 Python initially loaded the wrong `libexpat`, so `grpcio` could not be
   installed until we fixed the Python environment.
 - Node I used fallback sample data until the real shards were copied and the
