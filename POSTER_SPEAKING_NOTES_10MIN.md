@@ -6,6 +6,58 @@
 
 **Subtitle:** Repeated pages dominated until the gather/cache floor took over.
 
+## Slide Speaker Notes: 5-6 Minute Version
+
+I want to focus on one finding from our final run, not walk through the whole
+project checklist. We used NYC 311 service requests, converted a 90,000 row
+subset into compact 20 byte records, and returned 80,000 records through our two
+laptop, nine node gRPC tree. The only variable in this graph is chunk size. At
+first the result looks simple: 2 KB chunks took about 338 ms, and 512 KB chunks
+took about 44 ms, so the extreme speedup is 7.7x. But the part we found more
+interesting is that 32 KB used 50 pages and 512 KB used only 4 pages, yet their
+means were almost tied: 45.7 ms versus 44.0 ms. The slide is explaining why
+that happens.
+
+The tree diagram is the starting point. The client does not directly call B
+through I. The client only calls A, because A is the public entry point and owns
+the scatter-gather fan-in. On the first page, A has to query B, H, G, and I. B
+gathers C, D, and E, and E gathers F. Once those payloads return, A materializes
+the full 1.6 MB result and stores it in the cache under the request id. That
+first page is special because it pays the distributed gather cost. Later pages
+for the same request id do not gather the whole tree again; A slices the cached
+payload and returns the next chunk.
+
+That is why total time is not only bandwidth. The cost has four pieces:
+scatter-gather fan-in over Wi-Fi, cache materialization at A, amortized page cost
+for each QueryOnce call, and serialization/copy work for the protobuf bytes.
+Small chunks help on one part: each response is tiny. But they hurt badly on
+another part: we repeat the page path hundreds of times. Large chunks reduce the
+number of page calls, but each response is larger and the tail latency becomes
+more visible.
+
+The bottom-left diagram is there to avoid a common misunderstanding. The 338 ms
+at 2 KB is not one chunk response. It is all 800 page responses combined. Each
+2 KB page is cheap, about 0.42 ms on average, but 800 cheap operations still add
+up. At 32 KB, the client only needs 50 pages, so most of the repeated paging
+overhead has already been amortized. Going from 50 pages down to 4 pages still
+helps a little, but now the fixed gather/cache floor and payload movement
+dominate. That is why 32 KB and 512 KB have almost the same mean.
+
+The fairness box shows why we did not just say 512 KB is the answer. At the
+32 KB knee, four clients each got exactly 50 chunks through A's queue. Their
+finish times were not identical, but they were close: 116.8 to 121.8 ms, a
+4.3 percent spread. So this is opportunity fairness. A gives clients equal
+turns, but network timing still creates slightly different wall-clock completion
+times.
+
+The conclusion is that the unique finding is not simply bigger chunks are
+faster. Chunk size shifts the bottleneck. Below 32 KB, repeated client-to-A
+paging dominates. Above 32 KB, the fixed gather/cache floor, serialization and
+copy work, and tail latency dominate. If we optimize only for mean or median,
+512 KB wins by a little. If we care about robustness and fairness, 32 KB is the
+better operating point for this setup because it is nearly as fast but has much
+lower P90.
+
 ## 0:00-0:45 Opening: The Real Finding
 
 Our poster is about one specific result from the final two-laptop Mini 2 run.
