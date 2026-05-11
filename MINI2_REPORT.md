@@ -9,12 +9,12 @@ distributed group of processes. The question we focused on was:
 chunks, how much does chunk size change the total query time?**
 
 The short answer from our final two-computer run is that chunk size mattered a
-lot. Returning the same 80,000 typed 311 records in 512 KB chunks averaged about
-44 ms, while 2 KB chunks averaged about 338 ms. That is about 7.7x faster, mostly
-because the client made 4 round trips instead of 800. The important lesson is
-not "always use the biggest chunk." The deeper lesson is that the result only
-became believable after we fixed several failures that would have made the graph
-wrong.
+lot, but not in a simple "bigger is always better" way. Returning the same
+80,000 typed 311 records in 512 KB chunks averaged about 44 ms, while 2 KB
+chunks averaged about 338 ms. That is about 7.7x faster. The more useful
+finding is the knee around 32 KB: 32 KB chunks averaged 45.7 ms with 50 pages,
+while 512 KB chunks averaged 44.0 ms with only 4 pages. After 32 KB, the fixed
+gather/transfer floor and tail variance mattered more than the raw page count.
 
 ## Mini 1 Feedback We Applied
 
@@ -135,16 +135,35 @@ evidence.
 | 128000 | 47482 | 13 | 3652 |
 | 512000 | 44046 | 4 | 11011 |
 
-The main trend is the round-trip count. The 2 KB run needed 800 client-leader
-calls, while the 512 KB run needed only 4. That is why the largest chunk size
-was about 7.7x faster in total time.
+The main trend at small chunk sizes is page count. The 2 KB run needed 800
+client-leader pages, while the 512 KB run needed only 4. That is why the largest
+chunk size was about 7.7x faster than the smallest.
 
-The table also shows a tradeoff. The average RPC time grows as the chunk gets
-larger, because each response carries more data. The 32 KB, 128 KB, and 512 KB
-rows are close in total time, which makes sense on Wi-Fi: once the request count
-is low enough, network variation starts to blur the curve. Our conclusion is
-therefore careful: larger chunks helped this workload, but the best chunk size
-depends on memory pressure, fairness, and network stability.
+The table also shows the knee. Moving from 50 pages at 32 KB to 4 pages at
+512 KB only improved the mean by about 1.7 ms. The accurate interpretation is
+that chunk size shifts cost from repeated paging overhead into a fixed
+gather/transfer floor. The first page makes A gather and cache the full 1.6 MB
+response from B-I. Later pages come from A's cache, so small chunks pay many
+client-to-A unary RPC/cache-copy steps. Once chunks are large enough, the
+remaining time is dominated by the one-time gather, payload movement,
+serialization/copying, and Wi-Fi tail spikes.
+
+## Mean, Median, and Tail Behavior
+
+| Chunk bytes | Mean ms | Median ms | P90 ms | CV |
+|---:|---:|---:|---:|---:|
+| 2000 | 337.8 | 345.6 | 391.7 | 0.14 |
+| 8000 | 91.3 | 85.8 | 105.4 | 0.16 |
+| 32000 | 45.7 | 39.9 | 61.0 | 0.26 |
+| 128000 | 47.5 | 28.3 | 115.3 | 0.74 |
+| 512000 | 44.0 | 25.8 | 110.1 | 0.80 |
+
+The medians show that large chunks were usually faster. The tail numbers show
+why the means flatten: large chunks were much more sensitive to a single slow
+remote gather or response spike. In this setup, 512 KB had the best mean and
+median, but 32 KB was the more robust knee: almost the same mean as 512 KB,
+lower P90, lower coefficient of variation, and a better fit for the fairness
+run.
 
 ## Fairness Test
 
@@ -226,12 +245,11 @@ but it also increases memory pressure at A.
 ## Conclusion
 
 The final result supports one focused conclusion: for this 311 scatter-gather
-workload, chunk size is a major control knob because it changes the number of
-client-leader round trips. The result is strongest at the extremes: 2 KB chunks
-were much slower than 512 KB chunks. The middle values were closer, which tells
-us not to overclaim. On a noisy two-laptop Wi-Fi setup, after the round-trip
-count is reduced enough, network variation and per-response cost start to
-matter.
+workload, chunk size is a major control knob, but the useful discovery is the
+knee. Below 32 KB, repeated pages dominate. Above 32 KB, the fixed
+gather/transfer floor and tail variance dominate. If the goal is lowest mean or
+median, 512 KB wins by a small amount. If the goal is robustness, fairness, and
+tail behavior, 32 KB is the better operating point for this two-laptop setup.
 
 The failures were just as important as the successful graph. Port collisions,
 missing shards, topology mistakes, Python dependency problems, and partial-cache

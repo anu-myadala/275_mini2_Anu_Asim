@@ -1,140 +1,186 @@
-# 10-Minute Poster Speaking Notes
+# Mini 2 Poster Speaking Notes
 
-## 0:00-0:45 The Finding
+## Slide Title
 
-Our poster is not a summary of Mini 2. The finding we want people to remember
-is this: the fastest performance curve was not trustworthy until we broke the
-system in several ways and proved the measurement path.
+**THE 32 KB KNEE**
 
-The final number is clear. On two laptops, returning the same 80,000 typed NYC
-311 records took about 338 ms with 2 KB chunks and about 44 ms with 512 KB
-chunks. That is about 7.7x faster. But the more interesting part is how many
-things had to be fixed before that result meant anything.
+**Subtitle:** Repeated pages dominated until the gather/cache floor took over.
 
-## 0:45-1:45 Why Chunk Size Became Our Main Question
+## 0:00-0:45 Opening: The Real Finding
 
-The assignment asked how to conserve memory, manage request-response pressure,
-and allow fairness between endpoints. Chunk size touches all three.
+Our poster is about one specific result from the final two-laptop Mini 2 run.
+We returned the same 80,000 typed NYC 311 records through the same nine-node
+gRPC tree. The only variable we changed was the chunk size.
 
-Small chunks are gentle on each response, but they force the client to keep
-coming back. In our final run, 2 KB meant 800 client-leader round trips.
+At the extremes, the result looks simple: 2 KB chunks averaged 337.8 ms, while
+512 KB chunks averaged 44.0 ms. That is a 7.7x improvement.
 
-Large chunks reduce that request pressure. At 512 KB, the same response only
-needed 4 chunks. The tradeoff is that each response is heavier, so A holds and
-sends larger buffers.
+But the real finding is more interesting than "bigger chunks are faster." The
+curve has a knee around 32 KB. At 32 KB, we still used 50 client-to-leader
+pages. At 512 KB, we used only 4 pages. But the means were almost the same:
+45.7 ms versus 44.0 ms. That is only a 1.7 ms difference.
 
-So our real question became: where does the cost move when the same data is
-returned in different shapes?
+So the question is: if page count matters so much, why did cutting 50 pages to
+4 pages barely change the mean? That is what this slide explains.
 
-## 1:45-2:45 What The Results Actually Show
+## 0:45-1:45 What The Timing Actually Measures
 
-The chart shows total request time by chunk size. The trend is strongest at the
-extremes: 2 KB was much slower than 512 KB.
+The client calls A with unary `QueryOnce` requests. The first page is special:
+A gathers the full result from B-I, caches the 1.6 MB payload, and returns the
+first chunk. Later pages come from A's cache.
 
-At 8 KB, total time dropped to about 91 ms. At 32 KB, it was about 46 ms. Then
-128 KB and 512 KB were close to that range.
+So the total time is not just "network bandwidth." It has two broad parts:
 
-That middle flattening is important. It keeps us from overclaiming. The result
-is not "bigger is always better." The result is that once the request count is
-low enough, Wi-Fi variation and per-response cost start to matter.
+First, repeated paging overhead. Every page has a unary RPC from the client to
+A, fair-queue scheduling, cache lookup, copying/sub-stringing at A, protobuf
+payload work, and response handling.
 
-## 2:45-3:45 The First Way The Graph Lied
+Second, a fixed floor. Every run has to gather the same 1.6 MB result from the
+tree at least once. That includes remote nodes over Wi-Fi, serialization,
+payload movement, and copying inside A.
 
-The first failure was simple but useful: old processes were already bound to
-some of the same ports. The client was not always talking to the cluster we
-thought we had started.
+When chunks are tiny, the repeated paging overhead dominates. When chunks are
+large enough, the fixed gather/transfer floor dominates and the curve flattens.
 
-That made us add a runbook habit: check listening ports before trusting a run.
-It sounds basic, but in a distributed project the wrong process can make a
-benchmark look like a code problem.
+## 1:45-2:45 Why 32 KB And 512 KB Are So Close
 
-That is why our report includes failures. They are not side notes; they are
-part of how we validated the final numbers.
+The data fits that story.
 
-## 3:45-4:45 The Second Way The Graph Lied
+At 2 KB, the client made 800 pages. The mean was 337.8 ms.
 
-The next failure was topology. The assignment explicitly says not to flatten the
-tree, and the tree creates real coordination issues. Our first derived tree made
-A contact only B's side of the graph, so H, G, and I were missing.
+At 8 KB, the client made 200 pages. The mean dropped to 91.3 ms.
 
-That would have made the system look faster for the wrong reason: it was doing
-less work.
+At 32 KB, the client made 50 pages. The mean dropped to 45.7 ms.
 
-The fix was to make the directed children explicit in `nodes.yaml`. That kept
-the overlay configurable without hardcoding node roles in the code.
+After that, the returns nearly disappeared. At 128 KB, only 13 pages were
+needed, but the mean was 47.5 ms. At 512 KB, only 4 pages were needed, but the
+mean was 44.0 ms.
 
-## 4:45-5:45 The Cross-Language Failure
+A rough fit across the means gives about 0.37 ms of cost per extra page and a
+fixed floor around 33 ms. That is not a pure TCP-handshake number, and I would
+not describe it that way. It includes local unary RPC overhead, cache copying,
+protobuf work, and the first gather. But it is enough to explain the shape: by
+32 KB, most of the page-count penalty is already gone.
 
-Node I is Python and the rest are C++. That was not just a checkbox. It forced
-us to treat the binary record layout as a real contract.
+## 2:45-3:45 Mean vs Median: Why The Large Chunks Look Flat
 
-Each 311 record is 20 bytes: id, latitude, longitude, zip, year, status, and
-borough. If Python and C++ disagree about that layout, the cluster can still run
-but return nonsense.
+The means are only half the story. The medians show that larger chunks were
+usually faster.
 
-The socket interoperability lab helped here. The lesson was that
-cross-language communication is not only about the transport. The message shape
-has to be verified too.
+At 32 KB, the median was 39.9 ms. At 128 KB, the median was 28.3 ms. At 512 KB,
+the median was 25.8 ms.
 
-## 5:45-6:45 Fairness, Not Just Speed
+So in a typical run, 512 KB was faster than 32 KB. But the tail got much worse.
+The 90th percentile at 32 KB was 61.0 ms. At 512 KB it was 110.1 ms. The
+coefficient of variation went from 0.26 at 32 KB to 0.80 at 512 KB.
 
-We also ran four clients at 32 KB chunks. Each client received 50 chunks, so
-the queue did prevent one client from draining the whole cached response first.
+That means large chunks were fast when the network behaved, but one slow remote
+gather or large response spike could dominate the whole run. With only 4 pages,
+one bad page is a huge fraction of the request. With 50 pages, a spike is
+spread across more calls and the run is more stable.
 
-But the finish times were not identical. The slowest client was about 4.3%
-slower than the fastest.
+That is why the slide says 32 KB is the knee: it is near the fastest mean, but
+with much lower tail risk than 128 KB or 512 KB.
 
-That is why we call it opportunity fairness. The scheduler gives clients turns,
-but it does not guarantee identical wall-clock latency. That distinction matters
-because the assignment asked about balance, not just throughput.
+## 3:45-4:45 The Six Things We Had To Validate First
 
-## 6:45-7:45 Failure Timing And Cache Tradeoff
+None of this timing mattered until we fixed the measurement path.
 
-The H-down test gave us the best distributed-systems lesson.
+First, stale processes were still bound to some ports, so early clients could
+talk to the wrong cluster.
+
+Second, the tree was partially derived wrong. A initially contacted only B's
+subtree, which skipped H, G, and I. That made the benchmark look faster because
+it was doing less work.
+
+Third, the leader had a 64 KB chunk cap, so our early 128 KB and 512 KB tests
+were not actually measuring those sizes.
+
+Fourth, request ids were reused, which meant cached results could be returned
+as if they were fresh gathers.
+
+Fifth, Python and C++ had to agree on the exact 20-byte binary layout:
+`int32 key`, `float lat`, `float lon`, `uint32 zip`, `uint16 year`, `uint8
+status`, and `uint8 borough`.
+
+Sixth, node I once used fallback sample data because the real `shards/`
+directory was missing on host2.
+
+The system could look alive during all of these mistakes. That is why
+validation is part of the finding, not just cleanup.
+
+## 4:45-5:35 Fairness
+
+The fairness test used four concurrent clients at 32 KB, the knee point.
+
+Every client received exactly 50 chunks. The fastest client finished in
+116.8 ms and the slowest finished in 121.8 ms, a 4.3% spread.
+
+That is opportunity fairness. A rotates chunk turns so one client cannot drain
+the whole cached result before the others get access. It does not guarantee
+identical wall-clock completion, because each client's RPCs still experience
+their own timing and network variation.
+
+This is why 32 KB is a practical operating point. It is already past most of
+the paging penalty, and it keeps chunk turns small enough to support concurrent
+clients.
+
+## 5:35-6:25 Failure Behavior
+
+We also tested node H going down on host2.
 
 If H is down before a new request starts, A fails clearly with a child-fetch
-error. That is the behavior we want because there is no replication. Returning
-partial data would be worse than returning an error.
+error. That is correct because there is no replication. Returning partial data
+would be worse than returning an error.
 
-But if H dies after A has already gathered and cached the first page, that same
-request can still finish from cache. So caching helps an active request survive
-late node loss, but it also turns A into a memory pressure point.
+If H dies after A has already gathered and cached the first page, that same
+request can still finish from cache. That protects an active request from late
+node loss, but it also makes A a memory pressure point because A is holding the
+full result while the client pages through it.
 
-That is exactly the kind of tradeoff Mini 2 was trying to make us see.
+That failure test supports the same conclusion: chunking is not only about
+speed. It changes memory pressure and failure behavior too.
 
-## 7:45-8:45 How The Labs Shaped The Solution
+## 6:25-7:15 Closing
 
-The `basic-grpc` lab gave us the mechanics: protobuf, generated stubs, and
-simple unary calls.
+The safest way to say our discovery is this:
 
-The `leader-adv` lab influenced the split between the coordinator and the
-workers. A coordinates; the data nodes do shard work and child fetches.
+Chunk size shifts the bottleneck. Below 32 KB, repeated pages dominate. Above
+32 KB, the fixed gather/cache floor and tail variance dominate.
 
-The socket lab and lectures influenced the chunk experiment because they showed
-that message size and message count change behavior. The MPI round and baton
-labs influenced how we thought about fairness: do clients get turns, or does
-one actor dominate the shared path?
+If we optimize only for mean or median, 512 KB wins by a small amount. If we
+care about robustness, fairness, and tail behavior, 32 KB is the better
+operating point for this setup.
 
-We did not make the code complicated just to look advanced. We used the labs as
-design pressure, then kept the implementation readable.
+So the final lesson is not "round trips are the bottleneck forever." It is that
+repeated pages dominate until they do not. The useful discovery is the knee in
+the curve, and the reason we trust it is that we validated the ports, full tree,
+chunk cap, cache ids, binary layout, and real shards before presenting the
+numbers.
 
-## 8:45-9:30 Why This Is Unique
+## Backup Q&A
 
-The unique part of our project is not that we used gRPC or had A-I processes.
-That was the baseline.
+**Why are 50 pages at 32 KB and 4 pages at 512 KB almost the same mean?**
+Because by 32 KB, most repeated paging overhead is already removed. The
+remaining time is dominated by the first gather/cache of the full result,
+payload movement, copying/serialization, and Wi-Fi tail spikes.
 
-The unique part is that the performance result and the failure result are tied
-together. The 7.7x improvement is only meaningful because we proved the system
-was using the full tree, real shards, the correct binary layout, unique request
-ids, and a chunk cap that actually allowed large chunks.
+**Is the 0.37 ms/page estimate a new TCP connection cost?**
+No. The client creates one gRPC channel to A, so it is not a new connection per
+page. The estimate lumps together local unary RPC overhead, fair queue, cache
+copying, protobuf work, and response handling.
 
-In other words, the final graph is a validation story, not just a speed story.
+**Which chunk size is best?**
+It depends on the objective. 512 KB had the best mean and median. 32 KB was the
+robust knee: 45.7 ms mean versus 44.0 ms at 512 KB, but P90 was 61.0 ms instead
+of 110.1 ms.
 
-## 9:30-10:00 Closing
+**What is the exact record layout?**
+`<iffIHBB`: `int32 key`, `float latitude`, `float longitude`, `uint32 incident
+zip`, `uint16 created year`, `uint8 status`, and `uint8 borough`, for exactly
+20 bytes.
 
-Mini 1 taught us to care about memory layout inside one program. Mini 2 taught
-us that once data crosses process and machine boundaries, message shape and
-request count can dominate.
-
-Our takeaway is simple: for distributed result sets, chunk size is a control
-knob, but validation is what makes the knob worth measuring.
+**Why not use streaming?**
+The assignment prohibited async/streaming gRPC. More importantly, explicit
+offsets let us control and measure chunk size directly instead of letting gRPC
+hide the flow-control behavior.

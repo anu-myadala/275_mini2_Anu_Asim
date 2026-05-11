@@ -98,9 +98,11 @@ Large chunks:
 512 KB chunks -> 4 chunks -> about 44 ms total
 ```
 
-The meaning is not "always use giant chunks." The meaning is: the number of
-round trips dominated the two-laptop result. Larger chunks reduce round trips,
-but they also increase memory per response and may hurt fairness under load.
+The meaning is not "always use giant chunks." The meaning is that chunk size has
+a knee. Going from 2 KB to 32 KB helped a lot because it reduced repeated pages
+from 800 to 50. Going from 32 KB to 512 KB reduced pages from 50 to 4, but the
+mean only changed from 45.7 ms to 44.0 ms. After about 32 KB, the fixed
+gather/cache cost and Wi-Fi spikes mattered more than the raw number of pages.
 
 ## Why This Connects To Class
 
@@ -114,8 +116,8 @@ The failure/recovery lecture discusses fail-fast and reroute behavior. Our
 current design is fail-fast: if a child node cannot be reached, the client gets
 an error instead of a fake partial success.
 
-The notes say to average 15-30 runs. Our local table is a debug run with 3
-trials; the final two-computer result should use at least 15.
+The notes say to average 15-30 runs. Our final two-computer result uses 30 runs
+per chunk size.
 
 ## What To Say If Asked About Weaknesses
 

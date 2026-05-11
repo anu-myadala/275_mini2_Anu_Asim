@@ -58,11 +58,28 @@ Two-host average of 30 runs per chunk size:
 | 128000 | 47482 | 13 | 3652 | 208 | 113591 |
 | 512000 | 44046 | 4 | 11011 | 311 | 130184 |
 
-Takeaway: increasing chunk size reduces total wall time because it reduces the
-number of client-leader round trips. On the two-laptop run, 512 KB was the
-fastest average, but 32 KB and 128 KB were close. The max RPC column shows the
-cost of Wi-Fi outliers and cold first requests; those spikes are why averaging
-30 runs is more reliable than judging a single request.
+Takeaway: increasing chunk size reduces total wall time at first because it
+reduces the number of client-leader pages. The more precise finding is the knee
+around 32 KB. Moving from 2 KB to 32 KB cuts the mean from 337.8 ms to 45.7 ms.
+Moving from 32 KB to 512 KB cuts pages from 50 to 4, but only changes the mean
+from 45.7 ms to 44.0 ms.
+
+The reason is that after about 32 KB, the repeated paging cost is no longer the
+main bottleneck. The first page still makes A gather/cache the full 1.6 MB
+result from B-I, and the run still pays payload movement, serialization/copying,
+and Wi-Fi tail spikes.
+
+| Chunk bytes | Mean ms | Median ms | P90 ms | CV |
+|---:|---:|---:|---:|---:|
+| 2000 | 337.8 | 345.6 | 391.7 | 0.14 |
+| 8000 | 91.3 | 85.8 | 105.4 | 0.16 |
+| 32000 | 45.7 | 39.9 | 61.0 | 0.26 |
+| 128000 | 47.5 | 28.3 | 115.3 | 0.74 |
+| 512000 | 44.0 | 25.8 | 110.1 | 0.80 |
+
+The medians show large chunks were usually faster. The P90/CV values show why
+32 KB is a stronger robust operating point: it was near the fastest mean, but
+had much lower tail risk than 128 KB or 512 KB.
 
 ## Fairness Run
 

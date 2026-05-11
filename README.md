@@ -7,10 +7,11 @@ explicit chunk size.
 
 Team members: Anukrithi Myadala and Asim Mohammed.
 
-The final report finding is that chunk size strongly controlled total request
-time in the two-laptop run. For the same 80,000 typed records, 512 KB chunks
-averaged about 44 ms while 2 KB chunks averaged about 338 ms, mostly because the
-client made 4 round trips instead of 800.
+The final report finding is that chunk size has a knee around 32 KB. For the
+same 80,000 typed records, 512 KB chunks averaged about 44 ms while 2 KB chunks
+averaged about 338 ms. But 32 KB chunks averaged 45.7 ms, only 1.7 ms slower
+than 512 KB, with much lower tail risk. Below the knee, repeated paging
+dominates; above it, the fixed gather/transfer floor and Wi-Fi variance dominate.
 
 ## Important Files
 

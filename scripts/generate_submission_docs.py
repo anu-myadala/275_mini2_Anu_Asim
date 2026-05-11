@@ -17,6 +17,9 @@ from pptx.util import Inches as PptInches, Pt as PptPt
 ROOT = Path(__file__).resolve().parents[1]
 CHUNKS = [2000, 8000, 32000, 128000, 512000]
 TOTAL_US = [337844, 91303, 45748, 47482, 44046]
+MEDIAN_US = [345594, 85771, 39882, 28276, 25782]
+P90_US = [391651, 105447, 61045, 115303, 110104]
+CV = [0.14, 0.16, 0.26, 0.74, 0.80]
 
 
 def rgb(hex_color):
@@ -129,7 +132,30 @@ def make_docx():
         for i, value in enumerate(row):
             cells[i].text = str(value)
 
-    add_para(doc, "Result: 512 KB chunks completed the same 80,000-record response about 7.7x faster than 2 KB chunks across two laptops because the client needed 4 chunks instead of 800. The 32 KB, 128 KB, and 512 KB results were close because Wi-Fi introduced large outliers.")
+    add_para(doc, "Result: 512 KB chunks completed the same 80,000-record response about 7.7x faster than 2 KB chunks across two laptops because the client needed 4 chunks instead of 800. The more interesting result is the knee in the curve: 32 KB used 50 chunks and averaged 45.7 ms, while 512 KB used only 4 chunks and averaged 44.0 ms. That 1.7 ms difference means page count stopped being the only important cost after about 32 KB.")
+    add_para(doc, "The accurate interpretation is that chunk size shifts cost between repeated paging overhead and a fixed gather/transfer floor. The first page triggers A to gather and cache the full 1.6 MB response from B-I. Later pages come from A's cache, so small chunks pay many local unary RPC/cache-copy steps. Once chunks are large enough, the remaining time is dominated by the one-time gather, payload movement, serialization/copying, and Wi-Fi tail spikes.")
+
+    add_heading(doc, "Mean, Median, and Tail Behavior", 1)
+    tail_table = doc.add_table(rows=1, cols=5)
+    tail_table.style = "Table Grid"
+    hdr = tail_table.rows[0].cells
+    hdr[0].text = "Chunk bytes"
+    hdr[1].text = "Mean ms"
+    hdr[2].text = "Median ms"
+    hdr[3].text = "P90 ms"
+    hdr[4].text = "CV"
+    rows_tail = [
+        (2000, 337.8, 345.6, 391.7, 0.14),
+        (8000, 91.3, 85.8, 105.4, 0.16),
+        (32000, 45.7, 39.9, 61.0, 0.26),
+        (128000, 47.5, 28.3, 115.3, 0.74),
+        (512000, 44.0, 25.8, 110.1, 0.80),
+    ]
+    for row in rows_tail:
+        cells = tail_table.add_row().cells
+        for i, value in enumerate(row):
+            cells[i].text = str(value)
+    add_para(doc, "The medians show that large chunks were usually faster, but the high P90/CV values show why their means were not much better than 32 KB. With only 4-13 chunks, one slow remote gather or large response spike can dominate an entire run. A 32 KB chunk is therefore a good robust operating point for this setup: near-fastest mean, lower tail risk, and the fairness test was run at this size.")
 
     add_heading(doc, "Fairness Result", 1)
     add_para(doc, "Four clients at 32 KB chunks each completed 50 chunks. The slowest client was about 4.3% slower than the fastest, so the queue balances chunk turns but does not guarantee identical wall-clock finish times.")
@@ -154,7 +180,7 @@ def make_docx():
         doc.add_paragraph(item, style="List Bullet")
 
     add_heading(doc, "Conclusion", 1)
-    add_para(doc, "The final result supports one focused conclusion: chunk size changed total request time mainly by changing the number of client-leader round trips. The fastest result was useful, but it only became trustworthy after we fixed port collisions, topology mistakes, cache behavior, Python setup problems, missing shard deployment, and benchmark defaults.")
+    add_para(doc, "The final result supports one focused conclusion: chunk size has a knee around 32 KB. Below 32 KB, repeated pages dominate. Above 32 KB, the fixed gather/transfer floor and tail variance dominate. If optimizing only for mean or median, 512 KB wins by a small amount. If optimizing for robustness, fairness, and tail behavior, 32 KB is the better operating point for this two-laptop setup. This conclusion only became trustworthy after we fixed port collisions, topology mistakes, cache behavior, the hidden chunk cap, Python setup problems, missing shard deployment, and binary-layout validation.")
 
     add_heading(doc, "Individual Contributions", 1)
     add_para(doc, "Anukrithi Myadala focused on Mini 1 feedback analysis, runbooks, two-computer setup, result collection, report, and presentation framing. Asim Mohammed contributed to the cluster/protobuf implementation and helped with final code cleanup and validation.")
@@ -177,27 +203,33 @@ def make_docx():
 
 def make_poster_chart(path):
     labels = ["2 KB", "8 KB", "32 KB", "128 KB", "512 KB"]
-    ms = [v / 1000 for v in TOTAL_US]
+    mean_ms = [v / 1000 for v in TOTAL_US]
+    median_ms = [v / 1000 for v in MEDIAN_US]
+    p90_ms = [v / 1000 for v in P90_US]
     colors = ["#fb7185", "#fbbf24", "#38bdf8", "#34d399", "#a78bfa"]
 
     plt.figure(figsize=(8.4, 4.9), facecolor="#111827")
     ax = plt.gca()
     ax.set_facecolor("#111827")
-    bars = ax.barh(labels, ms, color=colors, height=0.58)
+    bars = ax.barh(labels, mean_ms, color=colors, height=0.52, alpha=0.95, label="mean")
     ax.invert_yaxis()
-    ax.set_xlim(0, 370)
-    ax.set_xlabel("average total request time, ms", color="#cbd5e1", labelpad=10)
+    ax.set_xlim(0, 430)
+    ax.set_xlabel("total request time, ms", color="#cbd5e1", labelpad=10)
     ax.tick_params(axis="x", colors="#94a3b8", labelsize=10)
     ax.tick_params(axis="y", colors="#f8fafc", labelsize=13)
     ax.grid(axis="x", color="#334155", linewidth=0.7, alpha=0.55)
     ax.set_axisbelow(True)
     for spine in ax.spines.values():
         spine.set_visible(False)
-    for bar, value in zip(bars, ms):
+    for bar, value, med, p90 in zip(bars, mean_ms, median_ms, p90_ms):
+        y = bar.get_y() + bar.get_height() / 2
+        ax.plot(med, y, marker="o", markersize=7, color="#f8fafc", markeredgecolor="#111827", markeredgewidth=1.2)
+        ax.plot([med, p90], [y, y], color="#e2e8f0", linewidth=1.2, alpha=0.45)
+        ax.plot(p90, y, marker="|", markersize=15, color="#e2e8f0", alpha=0.85)
         ax.text(
             bar.get_width() + 7,
-            bar.get_y() + bar.get_height() / 2,
-            f"{value:.0f} ms",
+            y,
+            f"mean {value:.0f}",
             va="center",
             ha="left",
             color="#f8fafc",
@@ -207,7 +239,7 @@ def make_poster_chart(path):
     ax.text(
         0,
         -0.92,
-        "Same 80,000 records. Only the chunk size changed.",
+        "Mean bars, median dots, P90 tick marks",
         color="#e2e8f0",
         fontsize=13,
         fontweight="bold",
@@ -215,7 +247,7 @@ def make_poster_chart(path):
     ax.text(
         0,
         -0.55,
-        "The curve is mostly a round-trip count story: 800 calls at 2 KB, 4 calls at 512 KB.",
+        "The knee is near 32 KB: mean is almost flat after that, but tail risk grows.",
         color="#94a3b8",
         fontsize=10.5,
     )
@@ -259,14 +291,14 @@ def make_poster():
         return shape
 
     add_box(PptInches(0), PptInches(0), PptInches(13.333), PptInches(0.12), "#f59e0b", "#f59e0b", False)
-    add_text(PptInches(0.45), PptInches(0.31), PptInches(3.0), PptInches(0.48), "FAST LIES", 38, "#facc15", True)
+    add_text(PptInches(0.45), PptInches(0.31), PptInches(4.55), PptInches(0.48), "THE 32 KB KNEE", 34, "#facc15", True)
     add_text(
-        PptInches(3.85),
+        PptInches(5.05),
         PptInches(0.35),
-        PptInches(7.95),
+        PptInches(6.8),
         PptInches(0.5),
-        "Why our 7.7x chunk-size speedup only counted after validation",
-        17,
+        "Repeated pages dominated until the gather/cache floor took over",
+        16,
         "#e2e8f0",
         True,
     )
@@ -280,45 +312,38 @@ def make_poster():
     add_text(PptInches(8.65), PptInches(1.2), PptInches(1.75), PptInches(0.55), "7.7x", 42, "#facc15", True)
     add_text(PptInches(10.35), PptInches(1.25), PptInches(2.15), PptInches(0.38), "faster total time", 15, "#f8fafc", True)
     add_text(PptInches(10.35), PptInches(1.66), PptInches(2.15), PptInches(0.48), "338 ms -> 44 ms", 20, "#38bdf8", True)
-    add_text(PptInches(8.65), PptInches(2.12), PptInches(3.95), PptInches(0.25), "same records, different response shape", 10.5, "#94a3b8")
+    add_text(PptInches(8.65), PptInches(2.12), PptInches(3.95), PptInches(0.25), "mean improvement from 2 KB to 512 KB", 10.5, "#94a3b8")
 
     add_box(PptInches(8.35), PptInches(2.75), PptInches(4.55), PptInches(1.0), "#101826", "#334155")
-    add_text(PptInches(8.62), PptInches(2.9), PptInches(3.95), PptInches(0.25), "Round-trip pressure collapsed", 14, "#f8fafc", True)
-    add_text(PptInches(8.7), PptInches(3.23), PptInches(1.15), PptInches(0.35), "800", 25, "#fb7185", True, PP_ALIGN.CENTER)
-    add_text(PptInches(9.85), PptInches(3.28), PptInches(0.55), PptInches(0.25), "to", 13, "#94a3b8", False, PP_ALIGN.CENTER)
-    add_text(PptInches(10.4), PptInches(3.23), PptInches(0.9), PptInches(0.35), "4", 25, "#34d399", True, PP_ALIGN.CENTER)
-    add_text(PptInches(11.15), PptInches(3.32), PptInches(1.1), PptInches(0.2), "client calls", 10, "#cbd5e1")
+    add_text(PptInches(8.62), PptInches(2.9), PptInches(3.95), PptInches(0.25), "Why 50 pages ~= 4 pages", 14, "#f8fafc", True)
+    add_text(PptInches(8.7), PptInches(3.23), PptInches(1.25), PptInches(0.35), "45.7", 23, "#38bdf8", True, PP_ALIGN.CENTER)
+    add_text(PptInches(9.88), PptInches(3.29), PptInches(0.55), PptInches(0.25), "vs", 12, "#94a3b8", False, PP_ALIGN.CENTER)
+    add_text(PptInches(10.45), PptInches(3.23), PptInches(1.2), PptInches(0.35), "44.0", 23, "#a78bfa", True, PP_ALIGN.CENTER)
+    add_text(PptInches(11.55), PptInches(3.32), PptInches(0.7), PptInches(0.2), "ms mean", 9.5, "#cbd5e1")
 
     add_box(PptInches(8.35), PptInches(4.05), PptInches(4.55), PptInches(1.65), "#111827", "#334155")
-    add_text(PptInches(8.65), PptInches(4.2), PptInches(3.95), PptInches(0.25), "Validation gates we failed first", 14, "#f8fafc", True)
-    gates = [
-        ("01", "stale ports"),
-        ("02", "partial tree"),
-        ("03", "cache bug"),
-        ("04", "binary layout"),
-        ("05", "missing shards"),
-    ]
-    x0 = 8.63
-    for i, (num, label) in enumerate(gates):
-        x = PptInches(x0 + i * 0.82)
-        add_box(x, PptInches(4.62), PptInches(0.56), PptInches(0.34), "#1e293b", "#475569")
-        add_text(x, PptInches(4.68), PptInches(0.56), PptInches(0.15), num, 8.5, "#facc15", True, PP_ALIGN.CENTER)
-        add_text(PptInches(x0 + i * 0.82 - 0.04), PptInches(5.05), PptInches(0.7), PptInches(0.35), label, 7.7, "#cbd5e1", False, PP_ALIGN.CENTER)
+    add_text(PptInches(8.65), PptInches(4.2), PptInches(3.95), PptInches(0.25), "The tradeoff after the knee", 14, "#f8fafc", True)
+    add_text(PptInches(8.68), PptInches(4.62), PptInches(1.1), PptInches(0.28), "32 KB", 17, "#38bdf8", True, PP_ALIGN.CENTER)
+    add_text(PptInches(9.85), PptInches(4.62), PptInches(1.1), PptInches(0.28), "512 KB", 17, "#a78bfa", True, PP_ALIGN.CENTER)
+    add_text(PptInches(11.08), PptInches(4.62), PptInches(1.1), PptInches(0.28), "meaning", 12, "#cbd5e1", True, PP_ALIGN.CENTER)
+    add_text(PptInches(8.67), PptInches(5.0), PptInches(1.1), PptInches(0.22), "P90 61 ms", 10, "#dbeafe", False, PP_ALIGN.CENTER)
+    add_text(PptInches(9.85), PptInches(5.0), PptInches(1.1), PptInches(0.22), "P90 110 ms", 10, "#ede9fe", False, PP_ALIGN.CENTER)
+    add_text(PptInches(11.04), PptInches(4.96), PptInches(1.3), PptInches(0.44), "larger chunks were faster typically, but spikier", 8.7, "#cbd5e1", False, PP_ALIGN.CENTER)
 
     add_box(PptInches(8.35), PptInches(5.98), PptInches(2.15), PptInches(0.75), "#13251f", "#34d399")
-    add_text(PptInches(8.55), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Fairness", 12, "#bbf7d0", True)
-    add_text(PptInches(8.55), PptInches(6.36), PptInches(1.75), PptInches(0.2), "4 clients each got 50 chunks", 9.2, "#dcfce7")
+    add_text(PptInches(8.55), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Robust point", 12, "#bbf7d0", True)
+    add_text(PptInches(8.55), PptInches(6.36), PptInches(1.75), PptInches(0.2), "32 KB: near-fastest mean, lower tail", 8.8, "#dcfce7")
 
     add_box(PptInches(10.75), PptInches(5.98), PptInches(2.15), PptInches(0.75), "#2a1b13", "#f59e0b")
-    add_text(PptInches(10.95), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Failure", 12, "#fde68a", True)
-    add_text(PptInches(10.95), PptInches(6.36), PptInches(1.75), PptInches(0.2), "H down before gather failed fast", 9.2, "#ffedd5")
+    add_text(PptInches(10.95), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Validated first", 12, "#fde68a", True)
+    add_text(PptInches(10.95), PptInches(6.36), PptInches(1.75), PptInches(0.2), "ports, tree, cache, cap, layout, shards", 8.5, "#ffedd5")
 
     add_text(
         PptInches(0.55),
         PptInches(6.85),
         PptInches(12.2),
         PptInches(0.28),
-        "Takeaway: chunk size is a performance knob; validation is what made the knob worth measuring.",
+        "Takeaway: chunk size shifts cost from repeated paging to a fixed gather/transfer floor; 32 KB is the knee for this setup.",
         13,
         "#e2e8f0",
         True,
