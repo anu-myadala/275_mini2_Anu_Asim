@@ -2,43 +2,23 @@
 
 ## Research Question
 
-Mini 2 asks what happens when the 311 query is moved from one process into a
-distributed group of processes. The question we focused on was:
+Mini 2 asked us to take the 311 query from Mini 1 and distribute it across a cluster of processes. The specific question we focused on was:
 
-**When A is the only public entry point and the result set has to be returned in
-chunks, how much does chunk size change the total query time?**
+**When A is the only public entry point and results have to come back in chunks, how much does chunk size actually affect total query time?**
 
-The short answer from our final two-computer run is that chunk size mattered a
-lot, but not in a simple "bigger is always better" way. Returning the same
-80,000 typed 311 records in 512 KB chunks averaged about 44 ms, while 2 KB
-chunks averaged about 338 ms. That is about 7.7x faster. The more useful
-finding is the knee around 32 KB: 32 KB chunks averaged 45.7 ms with 50 pages,
-while 512 KB chunks averaged 44.0 ms with only 4 pages. After 32 KB, the fixed
-gather/transfer floor and tail variance mattered more than the raw page count.
+The short answer from our final two-computer run: chunk size matters a lot, but not in a simple "bigger is always better" way. Returning the same 80,000 typed 311 records in 512 KB chunks averaged about 44 ms, while 2 KB chunks averaged about 338 ms — that's roughly 7.7x slower. The more interesting finding, though, is the knee around 32 KB. At 32 KB we got ~45.7 ms with 50 pages, and at 512 KB we got ~44.0 ms with just 4 pages. Past 32 KB, the fixed gather/transfer floor and tail variance start to matter more than cutting down page count.
 
 ## Mini 1 Feedback We Applied
 
-Mini 1 gave us a useful warning: a working program is not enough if the report
-does not prove why the result happened. The professor's comments pushed us in
-four directions for Mini 2:
+Mini 1 came with a useful lesson: having a working program isn't enough if the report can't explain *why* the results happened. The feedback pushed us in four directions for Mini 2:
 
-- Avoid shared merge contention. Mini 1 had a critical section during result
-  collection, which made the 8-thread result hard to explain. Mini 2 gathers
-  each child response into a separate buffer and merges after the child RPCs
-  finish.
-- Use tighter data types. The 311 rows are converted into compact binary records
-  instead of moving strings through the cluster.
-- Pre-size or reuse storage when possible. Shard payloads are loaded as exact
-  byte buffers, stubs are created once at startup, and the benchmark prints
-  timing summaries instead of every record.
-- Keep failed attempts. Several failures changed the final design, so they are
-  included as data points instead of hidden.
+- **Avoid shared merge contention.** In Mini 1, we had a critical section during result collection that made the 8-thread results hard to explain. In Mini 2, each child response goes into its own buffer, and we merge only after all child RPCs finish.
+- **Use tighter data types.** Instead of moving strings around the cluster, we convert 311 rows into compact 20-byte binary records.
+
 
 ## System Design
 
-The cluster has one public leader, A, and eight data nodes, B-I. Node I is
-implemented in Python; the other nodes are C++. The directed scatter-gather tree
-is configured in `config/nodes.yaml`:
+Our cluster has one public leader, A, and eight data nodes, B through I. Node I is implemented in Python; the rest are C++. The scatter-gather tree is defined in `config/nodes.yaml`:
 
 ```text
 A -> B, H, G, I
@@ -46,24 +26,13 @@ B -> C, D, E
 E -> F
 ```
 
-Clients only call A. A forwards the query to its children, those nodes fetch
-their local shards and recursively fetch their children, and A gathers the final
-payload. The client then pages through the gathered result with `QueryOnce`
-calls that include a request id, byte offset, and requested chunk size.
+Clients only ever talk to A. A forwards the query to its children, those nodes fetch their local shards and recursively contact their own children, and then A gathers the full payload. The client then pages through that result using `QueryOnce` calls that include a request id, byte offset, and chunk size.
 
-We stayed with unary gRPC calls and explicit offsets. An early prototype tried
-to move toward streaming, but that was not a good fit for the assignment
-constraints and it made the failure cases harder to reason about. Explicit
-chunk offsets also made the chunk-size experiment easier to measure.
+We went with unary gRPC calls and explicit offsets throughout. Explicit chunk offsets made the chunk-size experiment much cleaner to measure.
 
 ## Data Representation
 
-The NYC 311 source is a public 2020-present service-request dataset. Data.gov
-describes it as daily-updated operational data about requests, complaint/problem
-types, agencies, and geographic location; we used a 90,000-row subset for
-repeatable class testing instead of submitting the full dataset. The CSV is
-converted into one binary shard per data node. Each record is
-20 bytes:
+We're using a subset of the NYC 311 service request dataset (2020 to present) — 90,000 rows pulled from the public dataset on Data.gov. We used a fixed subset instead of the full thing to keep testing repeatable across machines. The CSV gets converted into one binary shard per data node. Each record is exactly 20 bytes:
 
 | Field | Type | Bytes | Why we chose it |
 |---|---:|---:|---|
@@ -71,270 +40,151 @@ converted into one binary shard per data node. Each record is
 | latitude | float | 4 | enough precision for city-level spatial filtering |
 | longitude | float | 4 | same reason as latitude |
 | incident zip | uint32 | 4 | numeric filter field |
-| created year | uint16 | 2 | year does not need 4 or 8 bytes |
+| created year | uint16 | 2 | year doesn't need 4 or 8 bytes |
 | status | uint8 | 1 | encoded category |
 | borough | uint8 | 1 | encoded category |
 
-This is where the Mini 1 memory-density feedback mattered most. If every row
-used CSV strings, the gRPC payload would measure string allocation behavior more
-than query behavior. With a fixed 20-byte record, 80,000 records is about 1.6 MB
-before gRPC framing, and every chunk size means the same amount of useful data.
+This is where the Mini 1 memory-density feedback paid off the most. If every row used CSV strings, the gRPC payload would've been measuring string allocation more than actual query behavior. With a fixed 20-byte record, 80,000 records is about 1.6 MB before gRPC framing, and every chunk size means the same amount of useful data — no noise from variable-length fields.
 
-## Course and Lab Ideas Used
+## Course and Lab Ideas We Used
 
-The implementation was influenced by several course labs and lectures, but we
-kept the code simple instead of copying in extra framework code:
+A few course labs and lectures shaped how we built this:
 
-- The `basic-grpc` lab gave us the protobuf/service pattern: define a small
-  service, generate C++/Python stubs, then put the real control logic around
-  the calls.
-- The `leader-adv` lab influenced the coordinator/worker split. A owns the
-  client-facing coordination, while B-I do shard work and child fetches.
-- The socket interoperability lab influenced the cross-language part. It made
-  us treat C++/Python record layout as a contract, not as an assumption.
-- The socket lectures and socket lab payload tests motivated the chunk-size
-  experiment: many small messages and fewer large messages can have very
-  different timing even when the useful data is identical.
-- The sharding lecture motivated splitting the binary data across B-I instead
-  of letting one process own all rows.
-- The MPI round/baton labs influenced the fairness test. We measured whether
-  clients got turns, not just whether the fastest client finished quickly.
+- The `basic-grpc` lab gave us the protobuf/service pattern — define a small service, generate the stubs, then build the control logic around the calls.
+- The `leader-adv` lab influenced how we split coordinator and worker roles. A handles client-facing coordination; B-I do shard work and child fetches.
+- The sharding lecture motivated splitting binary data across B-I rather than letting one node own everything.
+- The MPI round/baton labs influenced how we thought about the fairness test — we measured whether clients got turns, not just whether the fastest client finished quickly.
 
-## Outside Sources Used for Non-Class Pieces
+## Outside Sources Used
 
-Most of the design comes from class topics: gRPC, overlays, sharding, fairness,
-and benchmarking. A few implementation details were filled in from official
-documentation:
+Most of the design came from class material: gRPC, overlays, sharding, fairness, and benchmarking, and from official docs:
 
-- The Python/C++ binary record contract used Python's `struct` documentation.
-  The shared format is `<iffIHBB`, which is exactly 20 bytes.
-- The generated protobuf/gRPC C++ build step used CMake `add_custom_command`
-  documentation and the gRPC C++ basics tutorial.
-- YAML config loading used yaml-cpp on the C++ side and PyYAML on the Python
-  side.
-- The generated poster/report tooling used python-pptx and Matplotlib. This is
-  presentation tooling only; it is not part of the distributed query runtime.
+- Python's `struct` documentation for the binary record contract shared between C++ and Python. The format string is `<iffIHBB`, which is exactly 20 bytes.
+- CMake `add_custom_command` docs and the gRPC C++ basics tutorial for building the generated protobuf/gRPC sources.
+- yaml-cpp (C++ side) and PyYAML (Python side) for loading the YAML config.
 
-## Mini 2 Questions Answered
+## Mini 2 Prompt Questions Answered
 
-The Mini 2 prompt asked us to think beyond simply making gRPC calls work. These
-are the questions we tried to answer directly:
+The Mini 2 prompt asked us to think beyond just making gRPC calls work. Here's how we addressed each challenge:
 
 | Prompt challenge | What we did |
 |---|---|
 | Most performant way in time/resources | Swept chunk sizes over 30 runs each and measured total time, chunk count, avg RPC time, min RPC time, and max RPC time. |
 | Conserve memory | Used 20-byte typed records, explicit chunk offsets, and a 1 MB maximum chunk instead of returning unbounded results. |
-| Fairness between endpoints | Ran four clients at the same chunk size. Each received 50 chunks; finish times differed, so we reported opportunity fairness instead of claiming perfect fairness. |
+| Fairness between endpoints | Ran four clients at the same chunk size. Each received 50 chunks; finish times differed, so we reported opportunity fairness rather than claiming perfect fairness. |
 | Flexible overlay | Kept host/process/tree configuration in YAML. Node identity and config path are command-line arguments. |
-| Do not flatten the tree | Used the required tree shape with A -> B,H,G,I; B -> C,D,E; E -> F. The explicit `children` list fixed an early partial-tree bug. |
-| Python plus C++ | Implemented I in Python and the rest in C++; verified the Python node was using real shards before final timing. |
-| No async/streaming shortcut | Used unary gRPC calls with request id + offset + chunk size, so chunk control stayed in our code. |
-| Request abandonment / failure | We did not implement speculative prefetching. We chose fail-fast for a child that is down before gather, and cache-complete behavior after a request has already been gathered. |
-| Can requests be anticipated? | We considered prefetching/cross-request warming, but did not enable it because it would increase A's memory pressure and could hide whether the chunk-size result came from real demand or speculative work. |
+| Don't flatten the tree | Used the required shape: A -> B, H, G, I; B -> C, D, E; E -> F. An explicit `children` list fixed an early partial-tree bug. |
+| Python plus C++ | Implemented I in Python and the rest in C++; verified the Python node was using real shards before collecting final timing. |
+| No async/streaming shortcut | Used unary gRPC calls with request id + offset + chunk size, so chunk control stays in our code. |
 
 ## Measurement Plan
 
-The final chunk sweep used two laptops on the same Wi-Fi. Host 1 ran A-F and
-the client. Host 2 ran G, H, and Python node I. We generated 90,000 rows from
-the real NYC 311 CSV; A is leader-only, so the query returns 80,000 records from
-B-I.
+For the final chunk sweep, we ran two laptops on the same Wi-Fi. Host 1 ran A–F and the client. Host 2 ran G, H, and the Python node I. We generated 90,000 rows from the real NYC 311 CSV; since A is leader-only, the query returns 80,000 records from B-I.
 
-The professor's guidance says the report should include enough runs to support
-the conclusion. For the final table we used 30 runs per chunk size. We also kept
-separate fairness and failure tests so the performance chart was not the only
-evidence.
+We used 30 runs per chunk size to make sure the conclusions were well-supported, and we kept separate fairness and failure tests so the performance chart wasn't the only evidence.
 
 ## Two-Computer Chunk Results
 
 | Chunk bytes | Avg total us | Avg chunks | Avg RPC us |
 |---:|---:|---:|---:|
-| 2000 | 337844 | 800 | 422 |
-| 8000 | 91303 | 200 | 456 |
-| 32000 | 45748 | 50 | 914 |
-| 128000 | 47482 | 13 | 3652 |
-| 512000 | 44046 | 4 | 11011 |
+| 2,000 | 337,844 | 800 | 422 |
+| 8,000 | 91,303 | 200 | 456 |
+| 32,000 | 45,748 | 50 | 914 |
+| 128,000 | 47,482 | 13 | 3,652 |
+| 512,000 | 44,046 | 4 | 11,011 |
 
-The main trend at small chunk sizes is page count. The 2 KB run needed 800
-client-leader pages, while the 512 KB run needed only 4. That is why the largest
-chunk size was about 7.7x faster than the smallest.
+The main story at small chunk sizes is page count. The 2 KB run needed 800 client-to-leader round trips, while the 512 KB run needed only 4 — that's why the largest chunk is ~7.7x faster than the smallest.
 
-The table also shows the knee. Moving from 50 pages at 32 KB to 4 pages at
-512 KB only improved the mean by about 1.7 ms. The accurate interpretation is
-that chunk size shifts cost from repeated paging overhead into a fixed
-gather/transfer floor. The first page makes A gather and cache the full 1.6 MB
-response from B-I. Later pages come from A's cache, so small chunks pay many
-client-to-A unary RPC/cache-copy steps. Once chunks are large enough, the
-remaining time is dominated by the one-time gather, payload movement,
-serialization/copying, and Wi-Fi tail spikes.
+The table also shows the knee pretty clearly. Going from 50 pages at 32 KB to 4 pages at 512 KB only improved the mean by about 1.7 ms. The way we read that: chunk size shifts cost from repeated paging overhead into a fixed gather/transfer floor. The first page makes A gather and cache the full 1.6 MB response from B-I. Later pages come from that cache, so small chunks pay for many client-to-A unary RPC/cache-copy steps. Once chunks are big enough, the remaining time is dominated by the one-time gather, payload movement, serialization overhead, and the occasional Wi-Fi spike.
 
 ## Mean, Median, and Tail Behavior
 
 | Chunk bytes | Mean ms | Median ms | P90 ms | CV |
 |---:|---:|---:|---:|---:|
-| 2000 | 337.8 | 345.6 | 391.7 | 0.14 |
-| 8000 | 91.3 | 85.8 | 105.4 | 0.16 |
-| 32000 | 45.7 | 39.9 | 61.0 | 0.26 |
-| 128000 | 47.5 | 28.3 | 115.3 | 0.74 |
-| 512000 | 44.0 | 25.8 | 110.1 | 0.80 |
+| 2,000 | 337.8 | 345.6 | 391.7 | 0.14 |
+| 8,000 | 91.3 | 85.8 | 105.4 | 0.16 |
+| 32,000 | 45.7 | 39.9 | 61.0 | 0.26 |
+| 128,000 | 47.5 | 28.3 | 115.3 | 0.74 |
+| 512,000 | 44.0 | 25.8 | 110.1 | 0.80 |
 
-CV here is the sample standard deviation divided by the mean across the 30 runs.
-The medians show that large chunks were usually faster. The tail numbers show
-why the means flatten: large chunks were much more sensitive to a single slow
-remote gather or response spike. In this setup, 512 KB had the best mean and
-median, but 32 KB was the more robust knee: almost the same mean as 512 KB,
-lower P90, lower coefficient of variation, and a better fit for the fairness
-run.
+CV here is the sample standard deviation divided by the mean across 30 runs. The medians confirm that large chunks are usually faster. But the tail numbers explain why the means flatten out: large chunks are way more sensitive to a single slow remote gather or response spike. In our setup, 512 KB had the best mean and median, but 32 KB was the more robust choice — almost the same mean as 512 KB and a better fit for the fairness test window.
 
 ## Fairness Test
 
-We ran four clients at 32 KB chunks.
+We ran four clients simultaneously at 32 KB chunks.
 
 | Client | Total us | Chunks | Avg RPC us | Max RPC us |
 |---|---:|---:|---:|---:|
-| cli1 | 121275 | 50 | 2425 | 70184 |
-| cli2 | 120889 | 50 | 2417 | 62902 |
-| cli3 | 121798 | 50 | 2435 | 50136 |
-| cli4 | 116823 | 50 | 2336 | 83528 |
+| cli1 | 121,275 | 50 | 2,425 | 70,184 |
+| cli2 | 120,889 | 50 | 2,417 | 62,902 |
+| cli3 | 121,798 | 50 | 2,435 | 50,136 |
+| cli4 | 116,823 | 50 | 2,336 | 83,528 |
 
-All four clients received 50 chunks, so the queue did what we needed at the
-chunk-turn level. The finish times were not identical. The slowest client was
-about 4.3% slower than the fastest client. That means our design gives
-opportunity fairness, not strict latency fairness.
+All four clients got their 50 chunks, so the queue did what we needed at the chunk-turn level. Finish times weren't identical — the slowest client was about 4.3% slower than the fastest. So what we have is opportunity fairness, not strict latency fairness.
 
 ## Failures and What We Changed
 
-Early prototypes were smaller than the final two-computer run, but their
-failures were useful. We kept the lessons that affected the final code and
-measurement plan.
+Our early prototypes were smaller than the final two-computer run, but honestly the failures were some of the more useful things we went through. Here's what went wrong and what it changed:
 
-**Per-RPC setup overhead.** In an early version, outgoing gRPC channels and
-stubs were created inside the fetch path. That made the benchmark measure
-connection setup too much. The final nodes build their child stubs once during
-startup.
+**Per-RPC setup overhead.** In an early version, we were creating outgoing gRPC channels and stubs inside the fetch path. That meant the benchmark was measuring connection setup time, not query time. The fix was building child stubs once at startup.
 
-**Async/streaming detour.** We tried to reason about a streaming version because
-it felt natural for chunked data. It was dropped because the assignment asked
-for non-streaming gRPC, and because the completion-queue logic made failure
-behavior harder to explain. The final design uses unary requests with explicit
-offsets.
+**Port collision.** A local test was returning bad/empty results because an older server from a different folder was already sitting on the same ports. We tracked it down with `lsof` and killed the stale process.
 
-**Port collision.** A local test returned bad/empty results because an older
-server from another folder was already listening on the same ports. We found it
-with `lsof`, killed the old process, and added runbook checks before starting a
-cluster.
+**Topology ambiguity.** Our first tree derivation let the overlay shape decide too much, and A ended up only contacting B's subtree — missing H, G, and I entirely. We fixed this by keeping the directed `children` list explicit in YAML.
 
-**Topology ambiguity.** Our first tree derivation let the overlay shape decide
-too much, and A only contacted B's subtree. That missed H, G, and I. The final
-YAML keeps the directed `children` tree explicit.
+**Partial result caching.** A failed child fetch could have turned into a partial cached result. That's dangerous because later pages look successful while silently missing shards. We fixed it so the leader treats any child fetch failure as a full request failure.
 
-**Partial result caching.** A failed child fetch originally risked becoming a
-partial cached result. That is dangerous because later pages can look successful
-while silently missing shards. The leader now treats a child fetch failure as a
-request failure.
+**Request id reuse.** Reusing request ids was hiding some cache behavior during testing. The benchmark now uses unique ids for any run that shouldn't share state.
 
-**Request id reuse.** Reusing request ids hid some cache behavior during
-testing. The benchmark/client now uses unique ids for runs that should not share
-state.
+**Python environment failures.** Setting up host2 hit two problems: `yaml` was missing at first, and Homebrew Python was loading macOS's older `libexpat` when installing gRPC packages. The final run uses a project virtual environment and launches Python with the correct Homebrew expat library path.
 
-**Binary format mismatch.** The Python node exposed an easy mistake: C++ and
-Python have to agree on exact record size and field order. We fixed this by
-using one 20-byte layout and validating the shard size instead of assuming the
-serializer was correct.
+**Missing shard deployment.** Node I warned us at one point that it was falling back to sample data — a real measurement danger, since the cluster would've looked alive while one node wasn't using the actual dataset. We copied the shards to host2 and restarted node I before collecting any final numbers.
 
-**Python environment failures.** On host2, Python setup failed in two ways:
-`yaml` was missing at first, and Homebrew Python loaded macOS's older `libexpat`
-when installing gRPC packages. The final run used a project virtual environment
-and launched Python with the Homebrew expat library path.
-
-**Missing shard deployment.** Node I once warned that it was using fallback
-sample data. That was a real measurement danger, because the cluster would have
-looked alive while one node was not using the real dataset. We copied the shards
-to host2 and restarted node I before collecting final numbers.
-
-**Bad benchmark defaults.** One-record chunks were useful as a stress case, but
-they made normal runs painfully slow and hid the trend we cared about. Tiny
-chunks are now opt-in. We also found that a 64 KB leader cap made 128 KB and
-512 KB tests misleading, so the cap was raised to 1 MB.
-
-**Failure timing.** If H is down before a new request starts, A returns a clear
-`child fetch failed: H` error. If H dies after A already gathered and cached the
-first page, that same request can still complete from cache. That is a useful
-distributed-systems tradeoff: caching protects an active request after gather,
-but it also increases memory pressure at A.
+**Failure timing.** If H is down before a new request starts, A returns a clear `child fetch failed: H` error. If H dies *after* A has already gathered and cached the first page, that same request can still complete from cache. That's an interesting distributed systems tradeoff — caching protects an active request after gather, but it also increases memory pressure at A.
 
 ## Conclusion
 
-The final result supports one focused conclusion: for this 311 scatter-gather
-workload, chunk size is a major control knob, but the useful discovery is the
-knee. Below 32 KB, repeated pages dominate. Above 32 KB, the fixed
-gather/transfer floor and tail variance dominate. If the goal is lowest mean or
-median, 512 KB wins by a small amount. If the goal is robustness, fairness, and
-tail behavior, 32 KB is the better operating point for this two-laptop setup.
+The final result points to one main conclusion: for this 311 scatter-gather workload, chunk size is a major control knob, but the really interesting discovery is the knee. Below 32 KB, repeated paging dominates. Above 32 KB, the fixed gather/transfer floor and tail variance take over. If you just want the lowest mean or median, 512 KB wins. If you care about robustness, fairness, and tail behavior, 32 KB is the better operating point for this two-laptop setup.
 
-The failures were just as important as the successful graph. Port collisions,
-missing shards, topology mistakes, Python dependency problems, and partial-cache
-behavior all could have produced numbers that looked real but were not. The
-poster should focus on that discovery instead of summarizing every class or
-file: **the fastest curve was only trustworthy after we broke the system and
-proved the measurement path.**
+The failures were just as important as the results. Port collisions, missing shards, topology mistakes, Python dependency issues, and partial-cache behavior all could have produced numbers that looked real but weren't. The key takeaway: **the fastest curve was only trustworthy after we broke the system and proved the measurement path.**
 
 ## Deliverables
 
-The repo contains the code, the report, and a one-slide poster. For Canvas, the
-submission archive should include these project files but should not include the
-large 311 CSV or generated shard data.
+The repo includes the code, the report, and a one-slide poster.
 
 ## Individual Contributions
 
-Anukrithi Myadala focused on the Mini 1 feedback analysis, runbooks,
-two-computer setup, result collection, report, and presentation framing. Asim
-Mohammed contributed to the cluster/protobuf implementation and helped with the
-final code cleanup and validation.
+| Member | Contributions |
+|---|---|
+| Anukrithi Myadala | Mini 1 feedback analysis, runbooks, two-computer setup, result collection, report, presentation framing |
+| Asim Mohammed | Cluster/protobuf implementation, final code cleanup and validation |
 
 ## References
 
 - NYC Open Data / Data.gov, "311 Service Requests from 2020 to Present."
-  This validates the source and structure of the real 311 dataset used for shard
-  generation:
   https://catalog.data.gov/dataset/311-service-requests-from-2010-to-present
-- NYC Open Data, "311 Service Requests Updates." This explains that the current
-  2020-present 311 dataset is updated and maintained separately from the older
-  historical dataset:
+- NYC Open Data, "311 Service Requests Updates."
   https://opendata.cityofnewyork.us/311-service-requests-from-2010-to-present-updates/
-- gRPC, "Performance Best Practices." This supports our decision to measure
-  request/response cost carefully and not assume gRPC removes message-size and
-  latency tradeoffs:
+- gRPC, "Performance Best Practices."
   https://grpc.io/docs/guides/performance/
-- Protocol Buffers, "Encoding." This supports the idea that message format and
-  field encoding affect wire size, which is why our fixed binary record and
-  chunk sizes were measured explicitly:
+- Protocol Buffers, "Encoding."
   https://protobuf.dev/programming-guides/encoding/
-- Protocol Buffers, "Language Guide (proto3)." This was used for typed message
-  definitions and cross-language protobuf behavior:
+- Protocol Buffers, "Language Guide (proto3)."
   https://protobuf.dev/programming-guides/proto3/
 - Python documentation, "`struct` - Interpret bytes as packed binary data."
-  This supports the exact C++/Python binary layout contract:
   https://docs.python.org/3/library/struct.html
-- CMake documentation, "`add_custom_command`." This supports how the project
-  generates protobuf/gRPC C++ sources during the build:
+- CMake documentation, "`add_custom_command`."
   https://cmake.org/cmake/help/latest/command/add_custom_command.html
-- gRPC, "Basics tutorial: C++." This supports the `protoc` +
-  `grpc_cpp_plugin` source-generation pattern:
+- gRPC, "Basics tutorial: C++."
   https://grpc.io/docs/languages/cpp/basics/
-- PyYAML documentation. This supports Python YAML config parsing for node I:
+- PyYAML documentation.
   https://pyyaml.org/wiki/PyYAMLDocumentation
-- yaml-cpp project documentation. This supports the C++ config parser:
+- yaml-cpp project documentation.
   https://github.com/jbeder/yaml-cpp
-- python-pptx documentation. This supports the generated one-slide poster:
+- python-pptx documentation.
   https://python-pptx.readthedocs.io/
-- Matplotlib documentation, `barh`. This supports the horizontal chart used in
-  the poster:
+- Matplotlib documentation, `barh`.
   https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.barh.html
-- AMD Vitis HLS Documentation, "Data Structure Padding." This is a clear
-  outside reference for the Mini 1 feedback point that struct size is affected
-  by alignment and padding, not only by adding field sizes:
+- AMD Vitis HLS Documentation, "Data Structure Padding."
   https://docs.amd.com/r/2024.1-English/ug1399-vitis-hls/Data-Structure-Padding
-- Course lectures: messaging/socket costs, sharding, parallelism, failure
-  behavior, and benchmarking guidance.
-- Course labs: `basic-grpc`, `leader-adv`, MPI round/baton, and socket
-  interoperability examples.
+- Course labs: `basic-grpc`, `leader-adv`, MPI round/baton, and socket interoperability examples.
