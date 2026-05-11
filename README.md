@@ -5,6 +5,8 @@ cluster has one public leader, A, and eight data nodes, B-I. Nodes communicate
 with unary gRPC calls, and the client pages through the gathered result with an
 explicit chunk size.
 
+Team members: Anukrithi Myadala and Asim Mohammed.
+
 The final report finding is that chunk size strongly controlled total request
 time in the two-laptop run. For the same 80,000 typed records, 512 KB chunks
 averaged about 44 ms while 2 KB chunks averaged about 338 ms, mostly because the

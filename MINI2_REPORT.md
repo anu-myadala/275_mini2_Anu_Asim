@@ -78,18 +78,40 @@ before gRPC framing, and every chunk size means the same amount of useful data.
 
 ## Course and Lab Ideas Used
 
-The implementation was influenced by several course labs and lectures:
+The implementation was influenced by several course labs and lectures, but we
+kept the code simple instead of copying in extra framework code:
 
-- The gRPC lab gave us the basic protobuf/service pattern for `cluster.proto`.
-- The leader-election and leader-adv labs shaped the idea of A as the one
-  client-facing coordinator.
-- The socket and messaging lectures showed why many small messages can be
-  slower than fewer larger messages, even when the total byte count is the same.
+- The `basic-grpc` lab gave us the protobuf/service pattern: define a small
+  service, generate C++/Python stubs, then put the real control logic around
+  the calls.
+- The `leader-adv` lab influenced the coordinator/worker split. A owns the
+  client-facing coordination, while B-I do shard work and child fetches.
+- The socket interoperability lab influenced the cross-language part. It made
+  us treat C++/Python record layout as a contract, not as an assumption.
+- The socket lectures and socket lab payload tests motivated the chunk-size
+  experiment: many small messages and fewer large messages can have very
+  different timing even when the useful data is identical.
 - The sharding lecture motivated splitting the binary data across B-I instead
   of letting one process own all rows.
-- The MPI round/baton style labs influenced the fairness test: the goal was not
-  perfect equal finish time, but making sure clients got turns instead of one
-  client draining the entire cached result first.
+- The MPI round/baton labs influenced the fairness test. We measured whether
+  clients got turns, not just whether the fastest client finished quickly.
+
+## Mini 2 Questions Answered
+
+The Mini 2 prompt asked us to think beyond simply making gRPC calls work. These
+are the questions we tried to answer directly:
+
+| Prompt challenge | What we did |
+|---|---|
+| Most performant way in time/resources | Swept chunk sizes over 30 runs each and measured total time, chunk count, avg RPC time, min RPC time, and max RPC time. |
+| Conserve memory | Used 20-byte typed records, explicit chunk offsets, and a 1 MB maximum chunk instead of returning unbounded results. |
+| Fairness between endpoints | Ran four clients at the same chunk size. Each received 50 chunks; finish times differed, so we reported opportunity fairness instead of claiming perfect fairness. |
+| Flexible overlay | Kept host/process/tree configuration in YAML. Node identity and config path are command-line arguments. |
+| Do not flatten the tree | Used the required tree shape with A -> B,H,G,I; B -> C,D,E; E -> F. The explicit `children` list fixed an early partial-tree bug. |
+| Python plus C++ | Implemented I in Python and the rest in C++; verified the Python node was using real shards before final timing. |
+| No async/streaming shortcut | Used unary gRPC calls with request id + offset + chunk size, so chunk control stayed in our code. |
+| Request abandonment / failure | We did not implement speculative prefetching. We chose fail-fast for a child that is down before gather, and cache-complete behavior after a request has already been gathered. |
+| Can requests be anticipated? | We considered prefetching/cross-request warming, but did not enable it because it would increase A's memory pressure and could hide whether the chunk-size result came from real demand or speculative work. |
 
 ## Measurement Plan
 
@@ -142,8 +164,9 @@ opportunity fairness, not strict latency fairness.
 
 ## Failures and What We Changed
 
-The old Mini 2 report had a smaller prototype, but its failures were useful.
-We kept the lessons that affected the final code and measurement plan.
+Early prototypes were smaller than the final two-computer run, but their
+failures were useful. We kept the lessons that affected the final code and
+measurement plan.
 
 **Per-RPC setup overhead.** In an early version, outgoing gRPC channels and
 stubs were created inside the fetch path. That made the benchmark measure

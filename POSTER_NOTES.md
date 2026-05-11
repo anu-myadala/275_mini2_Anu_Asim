@@ -36,6 +36,20 @@ Large chunks improve total completion time, but each RPC carries more data and
 has higher per-call latency. The best chunk size depends on fairness and memory
 pressure, not only raw speed.
 
+## What Makes It Worth Presenting
+
+Do not spend the talk proving that we have A-I processes or a Python server.
+Those are baseline requirements. Spend the talk on what we learned:
+
+- A fast graph can be wrong if the tree is partial, ports are stale, or one node
+  is using sample data.
+- The chunk-size sweep answered the prompt's performance/resource question with
+  timing, chunk count, and RPC cost.
+- The fairness run answered the balance question honestly: equal chunk turns,
+  not equal finish times.
+- The H-down test answered the failure/caching question: fail-fast before
+  gather, cache-complete after gather.
+
 ## Depth Angle
 
 The poster should mention the failures that would have made the graph wrong:
@@ -59,8 +73,9 @@ interesting than how we proved the number was real.
 
 Use a dark background with one large chart in the center. Put the 7.7x number
 large on the right, and place a small "validation failures caught" box under it.
-Put the topology as a thin line drawing in the lower left. Keep the text short
-enough that people can read it from the back of the room.
+Keep topology tiny or leave it out verbally; the slide should not become an
+architecture diagram. Keep the text short enough that people can read it from
+the back of the room.
 
 ## Small Topology Graphic
 

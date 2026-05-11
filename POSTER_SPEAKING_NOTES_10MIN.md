@@ -1,152 +1,140 @@
 # 10-Minute Poster Speaking Notes
 
-## 0:00-0:45 Opening
+## 0:00-0:45 The Finding
 
-Our Mini 2 project is a distributed query system over NYC 311 data. The main
-question we focused on was: when a distributed result set is too large to return
-all at once, how much does chunk size affect performance?
+Our poster is not a summary of Mini 2. The finding we want people to remember
+is this: the fastest performance curve was not trustworthy until we broke the
+system in several ways and proved the measurement path.
 
-The one-slide poster is built around that question, but it also shows the deeper
-lesson: our first measurements were not automatically trustworthy. Chunk size
-mattered a lot, but we only trusted the curve after we found and fixed several
-ways the system could return misleading results.
+The final number is clear. On two laptops, returning the same 80,000 typed NYC
+311 records took about 338 ms with 2 KB chunks and about 44 ms with 512 KB
+chunks. That is about 7.7x faster. But the more interesting part is how many
+things had to be fixed before that result meant anything.
 
-## 0:45-1:45 System Setup
+## 0:45-1:45 Why Chunk Size Became Our Main Question
 
-The system has nine processes, A through I. A is the leader and the only public
-entry point. The client never calls the data nodes directly.
+The assignment asked how to conserve memory, manage request-response pressure,
+and allow fairness between endpoints. Chunk size touches all three.
 
-The tree is A to B, H, G, and I. B then talks to C, D, and E. E talks to F. Node
-I is written in Python and the rest are C++.
+Small chunks are gentle on each response, but they force the client to keep
+coming back. In our final run, 2 KB meant 800 client-leader round trips.
 
-This gives us a scatter-gather design. A scatters the query down the tree, the
-data nodes return their shard data, and A gathers the responses before returning
-chunks to the client.
+Large chunks reduce that request pressure. At 512 KB, the same response only
+needed 4 chunks. The tradeoff is that each response is heavier, so A holds and
+sends larger buffers.
 
-## 1:45-2:45 Data Representation
+So our real question became: where does the cost move when the same data is
+returned in different shapes?
 
-We used the NYC 311 Open Data CSV. The original CSV is very large and mostly
-string-based, so before running the cluster we convert it into binary shard
-files.
+## 1:45-2:45 What The Results Actually Show
 
-Each record is 20 bytes: unique key, latitude, longitude, incident zip, created
-year, status, and borough. This connects directly to the Mini 1 feedback. In
-Mini 1, we were told to be more careful with data types and memory density.
+The chart shows total request time by chunk size. The trend is strongest at the
+extremes: 2 KB was much slower than 512 KB.
 
-So instead of shipping strings through gRPC, we use typed binary records. That
-makes the payload size predictable and makes the chunk-size experiment cleaner.
+At 8 KB, total time dropped to about 91 ms. At 32 KB, it was about 46 ms. Then
+128 KB and 512 KB were close to that range.
 
-## 2:45-4:00 What Chunking Means
+That middle flattening is important. It keeps us from overclaiming. The result
+is not "bigger is always better." The result is that once the request count is
+low enough, Wi-Fi variation and per-response cost start to matter.
 
-The client does not receive the whole result in one response unless it asks for
-a very large chunk. It calls `QueryOnce` repeatedly with an offset.
+## 2:45-3:45 The First Way The Graph Lied
 
-For example, if the chunk size is 2 KB, the client gets a small piece of the
-result, then asks for the next offset, and keeps going. For our two-laptop
-80,000-record run, that meant 800 chunks.
+The first failure was simple but useful: old processes were already bound to
+some of the same ports. The client was not always talking to the cluster we
+thought we had started.
 
-If the chunk size is 512 KB, the same result comes back in only 4 chunks.
+That made us add a runbook habit: check listening ports before trusting a run.
+It sounds basic, but in a distributed project the wrong process can make a
+benchmark look like a code problem.
 
-So the tradeoff is: small chunks reduce per-response memory pressure, but they
-create many more round trips. Large chunks reduce round trips, but each response
-is heavier.
+That is why our report includes failures. They are not side notes; they are
+part of how we validated the final numbers.
 
-## 4:00-5:15 Results
+## 3:45-4:45 The Second Way The Graph Lied
 
-The chart on the poster shows total request time by chunk size.
+The next failure was topology. The assignment explicitly says not to flatten the
+tree, and the tree creates real coordination issues. Our first derived tree made
+A contact only B's side of the graph, so H, G, and I were missing.
 
-At 2 KB, the average total time was about 338,000 microseconds, or 338
-milliseconds. At 8 KB, it dropped to about 91 milliseconds. At 32 KB, it was
-about 46 milliseconds. At 512 KB, it was about 44 milliseconds.
+That would have made the system look faster for the wrong reason: it was doing
+less work.
 
-That is about a 7.7 times improvement from 2 KB to 512 KB in the final two-host
-run.
+The fix was to make the directed children explicit in `nodes.yaml`. That kept
+the overlay configurable without hardcoding node roles in the code.
 
-The important part is not that 512 KB is always the best value. The important
-part is that the cost of repeated request-response cycles still dominated, even
-when real Wi-Fi outliers made 32 KB, 128 KB, and 512 KB fairly close.
+## 4:45-5:45 The Cross-Language Failure
 
-## 5:15-6:15 Fairness Result
+Node I is Python and the rest are C++. That was not just a checkbox. It forced
+us to treat the binary record layout as a real contract.
 
-We also tested fairness with four clients at the same time using 32 KB chunks.
+Each 311 record is 20 bytes: id, latitude, longitude, zip, year, status, and
+borough. If Python and C++ disagree about that layout, the cluster can still run
+but return nonsense.
 
-All four clients received 50 chunks, so the queue did prevent one client from
-running all the way to the end before the others got turns.
+The socket interoperability lab helped here. The lesson was that
+cross-language communication is not only about the transport. The message shape
+has to be verified too.
 
-But the finish times were not identical. In the final two-host run, the slowest
-client was about 4.3 percent slower than the fastest client. So our conclusion
-is careful: the current queue gives opportunity fairness, not strict latency
-fairness.
+## 5:45-6:45 Fairness, Not Just Speed
 
-That is a good limitation to report because it shows the measurement was not
-just a success story.
+We also ran four clients at 32 KB chunks. Each client received 50 chunks, so
+the queue did prevent one client from draining the whole cached response first.
 
-## 6:15-7:30 Failures We Found
+But the finish times were not identical. The slowest client was about 4.3%
+slower than the fastest.
 
-We found several issues while testing.
+That is why we call it opportunity fairness. The scheduler gives clients turns,
+but it does not guarantee identical wall-clock latency. That distinction matters
+because the assignment asked about balance, not just throughput.
 
-First, an older Mini 2 server from another folder was already listening on some
-of the same ports. The client connected to the wrong service and gave empty RPC
-errors. We found it with `lsof` and stopped the old process.
+## 6:45-7:45 Failure Timing And Cache Tradeoff
 
-Second, the original tree derivation only made A contact B, so we were missing
-H, G, and I. That caused partial results. We fixed it by making the directed
-tree explicit in `nodes.yaml`.
+The H-down test gave us the best distributed-systems lesson.
 
-Third, partial failed results could be cached under the same request id. We
-changed the client to use unique request ids and changed the leader to fail the
-request if a child fetch fails.
+If H is down before a new request starts, A fails clearly with a child-fetch
+error. That is the behavior we want because there is no replication. Returning
+partial data would be worse than returning an error.
 
-Fourth, the Python server failed under the system Python because `yaml` was not
-installed. On the second laptop, Homebrew Python also loaded the wrong expat
-library, which broke pip until we used Python 3.12 with Homebrew's expat path.
+But if H dies after A has already gathered and cached the first page, that same
+request can still finish from cache. So caching helps an active request survive
+late node loss, but it also turns A into a memory pressure point.
 
-Fifth, node I first warned that it was using fallback sample data. That was a
-deployment mistake: the real shards had not been copied into the expected folder
-yet. We copied the shards and restarted node I before collecting final numbers.
+That is exactly the kind of tradeoff Mini 2 was trying to make us see.
 
-The newest failure test is also useful. If node H is down before a new request,
-the client gets a clear child-fetch error. But if H dies after A has already
-gathered and cached the first page, that same request can still complete. That
-means the cache helps an active request survive late node loss, but it also
-turns A into a memory pressure point.
+## 7:45-8:45 How The Labs Shaped The Solution
 
-## 7:30-8:30 Class Concepts
+The `basic-grpc` lab gave us the mechanics: protobuf, generated stubs, and
+simple unary calls.
 
-This project connects to several lecture topics.
+The `leader-adv` lab influenced the split between the coordinator and the
+workers. A coordinates; the data nodes do shard work and child fetches.
 
-From the socket and messaging lectures, payload size affects latency and
-throughput. Small messages have overhead. Large messages can cause buffer or
-network pressure.
+The socket lab and lectures influenced the chunk experiment because they showed
+that message size and message count change behavior. The MPI round and baton
+labs influenced how we thought about fairness: do clients get turns, or does
+one actor dominate the shared path?
 
-From the sharding lecture, splitting data across nodes improves scalability and
-parallel request handling, but it creates coordination costs.
+We did not make the code complicated just to look advanced. We used the labs as
+design pressure, then kept the implementation readable.
 
-From failure and balance, we chose a fail-fast behavior. Since the assignment
-does not use replication, if a child node is down, returning a clear error is
-better than returning a partial answer that looks successful.
+## 8:45-9:30 Why This Is Unique
 
-## 8:30-9:30 Two-Computer Run
+The unique part of our project is not that we used gRPC or had A-I processes.
+That was the baseline.
 
-The final run used two physical computers.
+The unique part is that the performance result and the failure result are tied
+together. The 7.7x improvement is only meaningful because we proved the system
+was using the full tree, real shards, the correct binary layout, unique request
+ids, and a chunk cap that actually allowed large chunks.
 
-For that run, we put A-F on host1 and G-I on host2. Then we ran the same chunk
-sweep with 30 runs per chunk size, following the course notes.
-
-The absolute latency was higher and noisier because traffic crossed Wi-Fi. But
-the trend still showed that chunk size controls the number of round trips.
-
-We also ran the H-down-before-request failure test. The client got a clear child
-fetch error instead of partial data, which is the behavior we wanted for
-correctness.
+In other words, the final graph is a validation story, not just a speed story.
 
 ## 9:30-10:00 Closing
 
-The main takeaway is that distributed performance was not just about using gRPC
-or adding more processes. The biggest lever we measured was how the result was
-broken into chunks, and the biggest lesson was that distributed measurements can
-look convincing while still being wrong.
+Mini 1 taught us to care about memory layout inside one program. Mini 2 taught
+us that once data crosses process and machine boundaries, message shape and
+request count can dominate.
 
-Mini 1 taught us to care about data representation. Mini 2 showed us that once
-the data crosses process and machine boundaries, message shape and request
-count become just as important.
+Our takeaway is simple: for distributed result sets, chunk size is a control
+knob, but validation is what makes the knob worth measuring.

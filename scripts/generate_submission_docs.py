@@ -73,13 +73,32 @@ def make_docx():
 
     add_heading(doc, "Course and Lab Ideas Used", 1)
     for item in [
-        "The basic gRPC lab shaped the protobuf/service structure.",
-        "The leader labs shaped A as the only public coordinator.",
+        "The basic-grpc lab shaped the protobuf/service structure and unary call pattern.",
+        "The leader-adv lab shaped A as the coordinator while B-I do shard work.",
+        "The socket interoperability lab made us treat the C++/Python 20-byte record layout as a contract.",
         "Socket and messaging lectures motivated the chunk-size experiment.",
         "The sharding lecture motivated splitting the binary data across B-I.",
         "MPI round/baton-style labs influenced the fairness test.",
     ]:
         doc.add_paragraph(item, style="List Bullet")
+
+    add_heading(doc, "Mini 2 Questions Answered", 1)
+    questions = [
+        ("Performance/resources", "30-run chunk sweep measured total time, chunk count, avg RPC time, min RPC time, and max RPC time."),
+        ("Conserve memory", "20-byte typed records, explicit chunk offsets, and a 1 MB max chunk instead of unbounded responses."),
+        ("Fairness/balance", "Four-client run showed equal chunk turns, but not identical finish times."),
+        ("Flexible overlay", "Host/process/tree settings live in YAML; identity and config path are runtime arguments."),
+        ("No flat shortcut", "Final tree uses A -> B,H,G,I; B -> C,D,E; E -> F."),
+        ("Request failure/abandonment", "Fail-fast before gather; cache-complete behavior after gather; no speculative prefetching because it would increase A memory pressure."),
+    ]
+    table_q = doc.add_table(rows=1, cols=2)
+    table_q.style = "Table Grid"
+    table_q.rows[0].cells[0].text = "Prompt challenge"
+    table_q.rows[0].cells[1].text = "Our answer"
+    for left, right in questions:
+        cells = table_q.add_row().cells
+        cells[0].text = left
+        cells[1].text = right
 
     add_heading(doc, "Measurement Plan", 1)
     add_para(doc, "The course notes recommend 15-30 runs to form an average and discard clear outliers. The final table below uses 30 runs per chunk size on two laptops.")
@@ -173,7 +192,7 @@ def make_poster():
     p.font.color.rgb = RGBColor(245, 248, 255)
 
     sub = slide.shapes.add_textbox(PptInches(0.48), PptInches(0.92), PptInches(8.6), PptInches(0.35))
-    sub.text_frame.text = "NYC 311 scatter-gather: chunk-size result plus the failures that validated it"
+    sub.text_frame.text = "The result: chunk size mattered, but validation made the speedup believable"
     sub.text_frame.paragraphs[0].font.size = PptPt(13)
     sub.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
 
@@ -210,7 +229,7 @@ def make_poster():
 
     box(PptInches(8.05), PptInches(3.0), PptInches(4.8), PptInches(1.55), RGBColor(20, 31, 47))
     caveat = slide.shapes.add_textbox(PptInches(8.35), PptInches(3.16), PptInches(4.25), PptInches(1.16))
-    caveat.text_frame.text = "Validation failures caught:\nport collision | partial tree | cached partial result | Python env | missing shards"
+    caveat.text_frame.text = "Validation failures caught:\nport collision | partial tree | cached partial result | binary layout | missing shards"
     for p in caveat.text_frame.paragraphs:
         p.font.size = PptPt(14)
         p.font.bold = True
@@ -218,13 +237,13 @@ def make_poster():
 
     box(PptInches(8.05), PptInches(4.85), PptInches(4.8), PptInches(1.05), RGBColor(20, 31, 47))
     topo = slide.shapes.add_textbox(PptInches(8.35), PptInches(5.0), PptInches(4.25), PptInches(0.7))
-    topo.text_frame.text = "client -> A -> B,H,G,I\nB -> C,D,E    E -> F"
+    topo.text_frame.text = "Fairness: 4 clients each got 50 chunks\nFailure: H down before gather failed fast"
     for p in topo.text_frame.paragraphs:
         p.font.size = PptPt(15)
         p.font.color.rgb = RGBColor(220, 230, 242)
 
     footer = slide.shapes.add_textbox(PptInches(0.55), PptInches(6.82), PptInches(12.2), PptInches(0.3))
-    footer.text_frame.text = "Tradeoff: fewer round trips, larger buffers. Final two-computer run: 30 runs per chunk size."
+    footer.text_frame.text = "Not a project summary: one finding, one tradeoff, and the failures that made the finding credible."
     footer.text_frame.paragraphs[0].font.size = PptPt(11)
     footer.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
 
