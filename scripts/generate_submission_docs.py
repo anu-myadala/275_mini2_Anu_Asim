@@ -8,7 +8,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION
-from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 from pptx.util import Inches as PptInches, Pt as PptPt
@@ -290,6 +290,10 @@ def make_poster():
         shape = slide.shapes.add_textbox(x, y, w, h)
         tf = shape.text_frame
         tf.clear()
+        tf.margin_left = PptInches(0.04)
+        tf.margin_right = PptInches(0.04)
+        tf.margin_top = PptInches(0.02)
+        tf.margin_bottom = PptInches(0.02)
         p = tf.paragraphs[0]
         p.text = text
         if align:
@@ -299,75 +303,145 @@ def make_poster():
         p.font.color.rgb = rgb(color)
         return shape
 
-    add_box(PptInches(0), PptInches(0), PptInches(13.333), PptInches(0.12), "#f59e0b", "#f59e0b", False)
-    add_text(PptInches(0.45), PptInches(0.31), PptInches(4.55), PptInches(0.48), "THE 32 KB KNEE", 34, "#facc15", True)
+    def add_line(x1, y1, x2, y2, color="#64748b", width=1.2):
+        line = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, x1, y1, x2, y2)
+        line.line.color.rgb = rgb(color)
+        line.line.width = PptPt(width)
+        return line
+
+    def add_node(cx, cy, label, fill="#172033", line="#64748b", color="#f8fafc"):
+        size = PptInches(0.36)
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.OVAL,
+            cx - size / 2,
+            cy - size / 2,
+            size,
+            size,
+        )
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = rgb(fill)
+        shape.line.color.rgb = rgb(line)
+        tf = shape.text_frame
+        tf.clear()
+        p = tf.paragraphs[0]
+        p.text = label
+        p.alignment = PP_ALIGN.CENTER
+        p.font.bold = True
+        p.font.size = PptPt(10)
+        p.font.color.rgb = rgb(color)
+        return shape
+
+    add_box(PptInches(0), PptInches(0), PptInches(13.333), PptInches(0.10), "#f59e0b", "#f59e0b", False)
+    add_text(PptInches(0.35), PptInches(0.28), PptInches(3.8), PptInches(0.45), "THE 32 KB KNEE", 30, "#facc15", True)
     add_text(
-        PptInches(5.05),
-        PptInches(0.35),
-        PptInches(6.8),
-        PptInches(0.5),
-        "Repeated pages dominated until the gather/cache floor took over",
-        16,
+        PptInches(4.1),
+        PptInches(0.34),
+        PptInches(7.3),
+        PptInches(0.34),
+        "Why 50 pages at 32 KB almost tied 4 pages at 512 KB",
+        15,
         "#e2e8f0",
         True,
     )
-    add_text(PptInches(11.55), PptInches(0.35), PptInches(1.25), PptInches(0.3), "Anukrithi + Asim", 9.5, "#94a3b8", False, PP_ALIGN.RIGHT)
+    add_text(PptInches(11.6), PptInches(0.34), PptInches(1.3), PptInches(0.24), "Anukrithi + Asim", 9, "#94a3b8", False, PP_ALIGN.RIGHT)
     add_text(
-        PptInches(5.08),
-        PptInches(0.78),
-        PptInches(6.6),
+        PptInches(4.12),
+        PptInches(0.68),
+        PptInches(8.2),
         PptInches(0.22),
-        "NYC 311 2020-present | 80k returned rows | 20-byte records | A-F host1, G/H/I host2 | 30 runs/size",
-        9.5,
+        "NYC 311 2020-present | 80k returned rows | 20-byte records | A-F host1, G/H/I host2 | 30 runs/chunk",
+        8.8,
         "#94a3b8",
     )
 
-    add_box(PptInches(0.45), PptInches(1.05), PptInches(7.65), PptInches(5.45), "#111827", "#334155")
-    slide.shapes.add_picture(str(poster_chart), PptInches(0.72), PptInches(1.32), width=PptInches(7.12), height=PptInches(4.7))
-    add_text(PptInches(0.82), PptInches(5.95), PptInches(6.9), PptInches(0.32), "30 runs per chunk size on two laptops over Wi-Fi", 11, "#cbd5e1", False, PP_ALIGN.CENTER)
-    add_text(PptInches(0.82), PptInches(6.2), PptInches(6.9), PptInches(0.2), "keywords: page count | gather/cache floor | P90 tail | opportunity fairness | fail-fast", 8.8, "#94a3b8", False, PP_ALIGN.CENTER)
+    add_box(PptInches(0.35), PptInches(1.0), PptInches(4.25), PptInches(2.85), "#111827", "#334155")
+    slide.shapes.add_picture(str(poster_chart), PptInches(0.52), PptInches(1.18), width=PptInches(3.9), height=PptInches(2.47))
 
-    add_box(PptInches(8.35), PptInches(1.05), PptInches(4.55), PptInches(1.45), "#172033", "#475569")
-    add_text(PptInches(8.65), PptInches(1.2), PptInches(1.75), PptInches(0.55), "7.7x", 42, "#facc15", True)
-    add_text(PptInches(10.35), PptInches(1.25), PptInches(2.15), PptInches(0.38), "faster total time", 15, "#f8fafc", True)
-    add_text(PptInches(10.35), PptInches(1.66), PptInches(2.15), PptInches(0.48), "338 ms -> 44 ms", 20, "#38bdf8", True)
-    add_text(PptInches(8.65), PptInches(2.12), PptInches(3.95), PptInches(0.25), "mean improvement from 2 KB to 512 KB", 10.5, "#94a3b8")
+    add_box(PptInches(4.82), PptInches(1.0), PptInches(3.55), PptInches(2.85), "#0f172a", "#334155")
+    add_text(PptInches(5.02), PptInches(1.14), PptInches(3.1), PptInches(0.22), "Tree path: client only talks to A", 12.5, "#f8fafc", True, PP_ALIGN.CENTER)
+    pts = {
+        "Client": (PptInches(5.25), PptInches(1.8)),
+        "A": (PptInches(6.1), PptInches(1.8)),
+        "B": (PptInches(5.4), PptInches(2.45)),
+        "H": (PptInches(6.0), PptInches(2.45)),
+        "G": (PptInches(6.6), PptInches(2.45)),
+        "I": (PptInches(7.2), PptInches(2.45)),
+        "C": (PptInches(5.05), PptInches(3.06)),
+        "D": (PptInches(5.45), PptInches(3.06)),
+        "E": (PptInches(5.85), PptInches(3.06)),
+        "F": (PptInches(5.85), PptInches(3.55)),
+    }
+    add_line(*pts["Client"], *pts["A"], "#38bdf8", 2.0)
+    for child in ["B", "H", "G", "I"]:
+        add_line(*pts["A"], *pts[child], "#64748b", 1.1)
+    for child in ["C", "D", "E"]:
+        add_line(*pts["B"], *pts[child], "#64748b", 1.1)
+    add_line(*pts["E"], *pts["F"], "#64748b", 1.1)
+    add_node(*pts["Client"], "C", "#1e293b", "#38bdf8")
+    add_node(*pts["A"], "A", "#3b2f12", "#facc15", "#facc15")
+    for n in ["B", "C", "D", "E", "F", "G", "H"]:
+        add_node(*pts[n], n)
+    add_node(*pts["I"], "I", "#13251f", "#34d399", "#bbf7d0")
+    add_text(PptInches(6.45), PptInches(1.58), PptInches(1.42), PptInches(0.28), "first page gathers B-I", 8.5, "#94a3b8")
 
-    add_box(PptInches(8.35), PptInches(2.75), PptInches(4.55), PptInches(1.0), "#101826", "#334155")
-    add_text(PptInches(8.62), PptInches(2.9), PptInches(3.95), PptInches(0.25), "Why 50 pages ~= 4 pages", 14, "#f8fafc", True)
-    add_text(PptInches(8.7), PptInches(3.23), PptInches(1.25), PptInches(0.35), "45.7", 23, "#38bdf8", True, PP_ALIGN.CENTER)
-    add_text(PptInches(9.88), PptInches(3.29), PptInches(0.55), PptInches(0.25), "vs", 12, "#94a3b8", False, PP_ALIGN.CENTER)
-    add_text(PptInches(10.45), PptInches(3.23), PptInches(1.2), PptInches(0.35), "44.0", 23, "#a78bfa", True, PP_ALIGN.CENTER)
-    add_text(PptInches(11.55), PptInches(3.32), PptInches(0.7), PptInches(0.2), "ms mean", 9.5, "#cbd5e1")
+    add_box(PptInches(8.62), PptInches(1.0), PptInches(4.35), PptInches(2.85), "#101826", "#334155")
+    add_text(PptInches(8.84), PptInches(1.14), PptInches(3.9), PptInches(0.22), "What total time is made of", 12.5, "#f8fafc", True, PP_ALIGN.CENTER)
+    pieces = [
+        ("first gather", "B-I over Wi-Fi", "#38bdf8"),
+        ("A cache/build", "assemble 1.6 MB", "#34d399"),
+        ("page overhead", "N QueryOnce calls", "#facc15"),
+        ("payload work", "protobuf + copies", "#a78bfa"),
+    ]
+    x = PptInches(8.92)
+    y = PptInches(1.62)
+    for i, (top, bottom, color) in enumerate(pieces):
+        add_box(x + PptInches(1.0 * i), y, PptInches(0.88), PptInches(0.78), "#172033", color)
+        add_text(x + PptInches(1.0 * i) + PptInches(0.04), y + PptInches(0.1), PptInches(0.8), PptInches(0.2), top, 8.3, color, True, PP_ALIGN.CENTER)
+        add_text(x + PptInches(1.0 * i) + PptInches(0.04), y + PptInches(0.38), PptInches(0.8), PptInches(0.25), bottom, 6.8, "#cbd5e1", False, PP_ALIGN.CENTER)
+        if i < len(pieces) - 1:
+            add_text(x + PptInches(0.89 + 1.0 * i), y + PptInches(0.25), PptInches(0.16), PptInches(0.22), "+", 12, "#94a3b8", True, PP_ALIGN.CENTER)
+    add_text(PptInches(8.95), PptInches(2.62), PptInches(3.75), PptInches(0.62), "Tiny chunks reduce payload per page, but multiply the page overhead. Large chunks cut page count, but each page carries more data and has worse tail risk.", 8.2, "#cbd5e1", False, PP_ALIGN.CENTER)
 
-    add_box(PptInches(8.35), PptInches(4.05), PptInches(4.55), PptInches(1.65), "#111827", "#334155")
-    add_text(PptInches(8.65), PptInches(4.2), PptInches(3.95), PptInches(0.25), "The tradeoff after the knee", 14, "#f8fafc", True)
-    add_text(PptInches(8.68), PptInches(4.62), PptInches(1.1), PptInches(0.28), "32 KB", 17, "#38bdf8", True, PP_ALIGN.CENTER)
-    add_text(PptInches(9.85), PptInches(4.62), PptInches(1.1), PptInches(0.28), "512 KB", 17, "#a78bfa", True, PP_ALIGN.CENTER)
-    add_text(PptInches(11.08), PptInches(4.62), PptInches(1.1), PptInches(0.28), "meaning", 12, "#cbd5e1", True, PP_ALIGN.CENTER)
-    add_text(PptInches(8.67), PptInches(5.0), PptInches(1.1), PptInches(0.22), "P90 61 ms", 10, "#dbeafe", False, PP_ALIGN.CENTER)
-    add_text(PptInches(9.85), PptInches(5.0), PptInches(1.1), PptInches(0.22), "P90 110 ms", 10, "#ede9fe", False, PP_ALIGN.CENTER)
-    add_text(PptInches(11.04), PptInches(4.96), PptInches(1.3), PptInches(0.44), "larger chunks were faster typically, but spikier", 8.7, "#cbd5e1", False, PP_ALIGN.CENTER)
+    add_box(PptInches(0.35), PptInches(4.1), PptInches(4.55), PptInches(2.55), "#111827", "#334155")
+    add_text(PptInches(0.55), PptInches(4.24), PptInches(4.05), PptInches(0.25), "Paging overhead adds up", 12.5, "#f8fafc", True)
+    rows = [
+        ("2 KB", "800 pages", 16, "#fb7185", "~0.42 ms/page, but 800x"),
+        ("32 KB", "50 pages", 10, "#38bdf8", "~0.91 ms/page, knee"),
+        ("512 KB", "4 pages", 4, "#a78bfa", "~11 ms/page, few but bigger"),
+    ]
+    for r, (label, pages, blocks, color, note) in enumerate(rows):
+        yy = PptInches(4.72 + 0.55 * r)
+        add_text(PptInches(0.58), yy, PptInches(0.62), PptInches(0.2), label, 9.2, color, True)
+        add_text(PptInches(1.15), yy, PptInches(0.72), PptInches(0.2), pages, 8.3, "#cbd5e1")
+        for b in range(blocks):
+            bx = PptInches(1.92 + 0.105 * b)
+            add_box(bx, yy + PptInches(0.02), PptInches(0.07), PptInches(0.17), color, color, False)
+        add_text(PptInches(3.45), yy, PptInches(1.18), PptInches(0.25), note, 7.4, "#94a3b8")
+    add_text(PptInches(0.58), PptInches(6.25), PptInches(4.05), PptInches(0.22), "Total is all pages combined, not one chunk response.", 8.7, "#facc15", True, PP_ALIGN.CENTER)
 
-    add_box(PptInches(8.35), PptInches(5.98), PptInches(2.15), PptInches(0.75), "#13251f", "#34d399")
-    add_text(PptInches(8.55), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Robust point", 12, "#bbf7d0", True)
-    add_text(PptInches(8.55), PptInches(6.36), PptInches(1.75), PptInches(0.2), "32 KB: near-fastest mean, lower tail", 8.8, "#dcfce7")
+    add_box(PptInches(5.15), PptInches(4.1), PptInches(3.05), PptInches(2.55), "#0f172a", "#334155")
+    add_text(PptInches(5.35), PptInches(4.24), PptInches(2.65), PptInches(0.25), "Fairness at 32 KB", 12.5, "#f8fafc", True, PP_ALIGN.CENTER)
+    for i, client in enumerate(["cli1", "cli2", "cli3", "cli4"]):
+        yy = PptInches(4.72 + 0.34 * i)
+        add_text(PptInches(5.42), yy, PptInches(0.48), PptInches(0.18), client, 7.8, "#cbd5e1")
+        add_line(PptInches(5.93), yy + PptInches(0.09), PptInches(6.58), yy + PptInches(0.09), "#38bdf8", 1.0)
+    add_box(PptInches(6.65), PptInches(4.78), PptInches(0.72), PptInches(0.72), "#172033", "#facc15")
+    add_text(PptInches(6.72), PptInches(4.98), PptInches(0.58), PptInches(0.22), "A queue", 8, "#facc15", True, PP_ALIGN.CENTER)
+    add_text(PptInches(5.45), PptInches(5.85), PptInches(2.35), PptInches(0.45), "each client: 50 chunks\n116.8-121.8 ms, 4.3% spread", 9, "#cbd5e1", False, PP_ALIGN.CENTER)
 
-    add_box(PptInches(10.75), PptInches(5.98), PptInches(2.15), PptInches(0.75), "#2a1b13", "#f59e0b")
-    add_text(PptInches(10.95), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Validated first", 12, "#fde68a", True)
-    add_text(PptInches(10.95), PptInches(6.36), PptInches(1.75), PptInches(0.2), "ports, tree, cache, cap, layout, shards", 8.5, "#ffedd5")
+    add_box(PptInches(8.45), PptInches(4.1), PptInches(4.52), PptInches(2.55), "#172033", "#475569")
+    add_text(PptInches(8.72), PptInches(4.22), PptInches(1.25), PptInches(0.5), "7.7x", 32, "#facc15", True)
+    add_text(PptInches(9.92), PptInches(4.32), PptInches(2.55), PptInches(0.35), "338 ms -> 44 ms", 18, "#38bdf8", True)
+    add_text(PptInches(8.72), PptInches(4.88), PptInches(3.8), PptInches(0.28), "2 KB to 512 KB total mean", 9, "#94a3b8")
+    add_box(PptInches(8.75), PptInches(5.32), PptInches(1.58), PptInches(0.72), "#101826", "#38bdf8")
+    add_box(PptInches(10.55), PptInches(5.32), PptInches(1.58), PptInches(0.72), "#101826", "#a78bfa")
+    add_text(PptInches(8.86), PptInches(5.45), PptInches(1.35), PptInches(0.18), "32 KB", 11, "#38bdf8", True, PP_ALIGN.CENTER)
+    add_text(PptInches(8.86), PptInches(5.68), PptInches(1.35), PptInches(0.18), "45.7 ms / P90 61", 7.8, "#dbeafe", False, PP_ALIGN.CENTER)
+    add_text(PptInches(10.66), PptInches(5.45), PptInches(1.35), PptInches(0.18), "512 KB", 11, "#a78bfa", True, PP_ALIGN.CENTER)
+    add_text(PptInches(10.66), PptInches(5.68), PptInches(1.35), PptInches(0.18), "44.0 ms / P90 110", 7.8, "#ede9fe", False, PP_ALIGN.CENTER)
+    add_text(PptInches(8.82), PptInches(6.22), PptInches(3.75), PptInches(0.22), "Why same? At 32 KB, most page-count cost is already gone.", 8.8, "#facc15", True, PP_ALIGN.CENTER)
 
-    add_text(
-        PptInches(0.55),
-        PptInches(6.85),
-        PptInches(12.2),
-        PptInches(0.28),
-        "Takeaway: chunk size shifts cost from repeated paging to a fixed gather/transfer floor; 32 KB is the knee for this setup.",
-        13,
-        "#e2e8f0",
-        True,
-        PP_ALIGN.CENTER,
-    )
+    add_text(PptInches(0.45), PptInches(6.86), PptInches(12.45), PptInches(0.28), "Takeaway: first page gathers/cache-builds once; chunk size mainly controls how many later client-to-A page costs are repeated.", 12, "#e2e8f0", True, PP_ALIGN.CENTER)
 
     prs.save(ROOT / "mini2-poster.pptx")
 

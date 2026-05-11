@@ -24,23 +24,31 @@ pages. At 512 KB, we used only 4 pages. But the means were almost the same:
 So the question is: if page count matters so much, why did cutting 50 pages to
 4 pages barely change the mean? That is what this slide explains.
 
-How to read the slide: the left chart shows mean time as bars, median time as
-white dots, and P90 as small tick marks. The page counts are written next to
-each chunk size. The right side is the argument: 7.7x speedup at the extremes,
-almost no mean difference between 32 KB and 512 KB, and higher tail risk after
-the knee.
+How to read the slide: start at the top-left chart, then move clockwise. The
+chart shows mean time as bars, median as white dots, P90 as tick marks, and page
+counts next to each chunk size. The tree diagram shows why every request goes
+through A: A is the only client-facing node, and it gathers from the rest of the
+tree. The equation box shows what total time is made of: first gather,
+A cache/build, repeated page overhead, and payload serialization/copying. The
+bottom-left diagram explains the multiplication effect: 2 KB pages are cheap
+one at a time, but there are 800 of them.
 
 ## 0:45-1:45 What The Timing Actually Measures
 
-The client calls A with unary `QueryOnce` requests. The first page is special:
-A gathers the full result from B-I, caches the 1.6 MB payload, and returns the
-first chunk. Later pages come from A's cache.
+The client calls A with unary `QueryOnce` requests. It does not call B through I
+directly. A is the public entry point, so A hides the rest of the tree from the
+client and owns the scatter-gather step.
+
+The first page is special: A gathers the full result from B-I, caches the
+1.6 MB payload, and returns the first chunk. Later pages come from A's cache for
+that same request id.
 
 So the total time is not just "network bandwidth." It has two broad parts:
 
 First, repeated paging overhead. Every page has a unary RPC from the client to
 A, fair-queue scheduling, cache lookup, copying/sub-stringing at A, protobuf
-payload work, and response handling.
+payload work, and response handling. This is why 338 ms at 2 KB is not one chunk
+response. It is the total after 800 small page responses.
 
 Second, a fixed floor. Every run has to gather the same 1.6 MB result from the
 tree at least once. That includes remote nodes over Wi-Fi, serialization,

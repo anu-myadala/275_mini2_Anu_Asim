@@ -77,16 +77,24 @@ less interesting than how we proved the number was real.
 
 ## Visual Layout
 
-Use a dark background with one large horizontal chart on the left. Put the 7.7x
-number on the right, but make the key comparison 32 KB vs 512 KB:
+The poster now uses six visual anchors so the talk can explain why the chart
+looks the way it does:
 
-`45.7 ms vs 44.0 ms mean, but 61 ms vs 110 ms P90.`
+- Top-left: the timing chart. It shows mean request time, median dots, P90
+  ticks, and the page count beside each chunk size.
+- Top-middle: the scatter-gather tree. The client only calls A; A gathers from
+  B, H, G, and I; B gathers from C, D, and E; E gathers from F.
+- Top-right: the total-time equation. Total time includes first gather,
+  A cache/build, repeated page overhead, and payload serialization/copying.
+- Bottom-left: the paging-overhead diagram. It makes clear that 338 ms at 2 KB
+  is the whole 800-page request, not one chunk response.
+- Bottom-middle: the fairness diagram. Four clients go through A's queue and
+  each receives 50 chunks at 32 KB.
+- Bottom-right: the key measures: 7.7x improvement, 32 KB vs 512 KB mean, and
+  the P90 tradeoff.
 
-Under that, show why the result is trustworthy: ports, tree, cache ids, chunk
-cap, binary layout, and shards were validated.
-
-Keep topology out of the main slide; it belongs in the talk if needed. The
-slide should feel like a research poster, not an architecture diagram.
+The slide should still focus on one finding: the 32 KB knee. The diagrams are
+there to make the mechanism easy to explain, not to become a code tour.
 
 ## Do Not Put This on the Poster
 
