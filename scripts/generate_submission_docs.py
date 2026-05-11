@@ -9,6 +9,7 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 from pptx.util import Inches as PptInches, Pt as PptPt
 
@@ -16,6 +17,11 @@ from pptx.util import Inches as PptInches, Pt as PptPt
 ROOT = Path(__file__).resolve().parents[1]
 CHUNKS = [2000, 8000, 32000, 128000, 512000]
 TOTAL_US = [337844, 91303, 45748, 47482, 44046]
+
+
+def rgb(hex_color):
+    hex_color = hex_color.lstrip("#")
+    return RGBColor(int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16))
 
 
 def add_heading(doc, text, level=1):
@@ -166,7 +172,59 @@ def make_docx():
     doc.save(ROOT / "mini2-report.docx")
 
 
+def make_poster_chart(path):
+    labels = ["2 KB", "8 KB", "32 KB", "128 KB", "512 KB"]
+    ms = [v / 1000 for v in TOTAL_US]
+    colors = ["#fb7185", "#fbbf24", "#38bdf8", "#34d399", "#a78bfa"]
+
+    plt.figure(figsize=(8.4, 4.9), facecolor="#111827")
+    ax = plt.gca()
+    ax.set_facecolor("#111827")
+    bars = ax.barh(labels, ms, color=colors, height=0.58)
+    ax.invert_yaxis()
+    ax.set_xlim(0, 370)
+    ax.set_xlabel("average total request time, ms", color="#cbd5e1", labelpad=10)
+    ax.tick_params(axis="x", colors="#94a3b8", labelsize=10)
+    ax.tick_params(axis="y", colors="#f8fafc", labelsize=13)
+    ax.grid(axis="x", color="#334155", linewidth=0.7, alpha=0.55)
+    ax.set_axisbelow(True)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    for bar, value in zip(bars, ms):
+        ax.text(
+            bar.get_width() + 7,
+            bar.get_y() + bar.get_height() / 2,
+            f"{value:.0f} ms",
+            va="center",
+            ha="left",
+            color="#f8fafc",
+            fontsize=12,
+            fontweight="bold",
+        )
+    ax.text(
+        0,
+        -0.92,
+        "Same 80,000 records. Only the chunk size changed.",
+        color="#e2e8f0",
+        fontsize=13,
+        fontweight="bold",
+    )
+    ax.text(
+        0,
+        -0.55,
+        "The curve is mostly a round-trip count story: 800 calls at 2 KB, 4 calls at 512 KB.",
+        color="#94a3b8",
+        fontsize=10.5,
+    )
+    plt.tight_layout(pad=1.8)
+    plt.savefig(path, dpi=220, facecolor="#111827")
+    plt.close()
+
+
 def make_poster():
+    poster_chart = ROOT / "results" / "poster_chunk_chart.png"
+    make_poster_chart(poster_chart)
+
     prs = Presentation()
     prs.slide_width = PptInches(13.333)
     prs.slide_height = PptInches(7.5)
@@ -174,78 +232,95 @@ def make_poster():
 
     bg = slide.background.fill
     bg.solid()
-    bg.fore_color.rgb = RGBColor(12, 18, 28)
+    bg.fore_color.rgb = rgb("#070b16")
 
-    def box(x, y, w, h, color, alpha=0):
-        shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h)
+    def add_box(x, y, w, h, fill, line="#1e293b", radius=True):
+        kind = MSO_SHAPE.ROUNDED_RECTANGLE if radius else MSO_SHAPE.RECTANGLE
+        shape = slide.shapes.add_shape(kind, x, y, w, h)
         shape.fill.solid()
-        shape.fill.fore_color.rgb = color
-        shape.line.color.rgb = RGBColor(40, 54, 75)
+        shape.fill.fore_color.rgb = rgb(fill)
+        shape.line.color.rgb = rgb(line)
         return shape
 
-    title = slide.shapes.add_textbox(PptInches(0.45), PptInches(0.22), PptInches(9.6), PptInches(0.78))
-    tf = title.text_frame
-    tf.text = "The Fastest Curve Was Not Trustworthy Until We Broke It"
-    p = tf.paragraphs[0]
-    p.font.size = PptPt(30)
-    p.font.bold = True
-    p.font.color.rgb = RGBColor(245, 248, 255)
+    def add_text(x, y, w, h, text, size, color="#f8fafc", bold=False, align=None):
+        shape = slide.shapes.add_textbox(x, y, w, h)
+        tf = shape.text_frame
+        tf.clear()
+        p = tf.paragraphs[0]
+        p.text = text
+        if align:
+            p.alignment = align
+        p.font.size = PptPt(size)
+        p.font.bold = bold
+        p.font.color.rgb = rgb(color)
+        return shape
 
-    sub = slide.shapes.add_textbox(PptInches(0.48), PptInches(0.92), PptInches(8.6), PptInches(0.35))
-    sub.text_frame.text = "The result: chunk size mattered, but validation made the speedup believable"
-    sub.text_frame.paragraphs[0].font.size = PptPt(13)
-    sub.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
+    add_box(PptInches(0), PptInches(0), PptInches(13.333), PptInches(0.12), "#f59e0b", "#f59e0b", False)
+    add_text(PptInches(0.45), PptInches(0.31), PptInches(3.0), PptInches(0.48), "FAST LIES", 38, "#facc15", True)
+    add_text(
+        PptInches(3.85),
+        PptInches(0.35),
+        PptInches(7.95),
+        PptInches(0.5),
+        "Why our 7.7x chunk-size speedup only counted after validation",
+        17,
+        "#e2e8f0",
+        True,
+    )
+    add_text(PptInches(11.55), PptInches(0.35), PptInches(1.25), PptInches(0.3), "Anukrithi + Asim", 9.5, "#94a3b8", False, PP_ALIGN.RIGHT)
 
-    chart_data = CategoryChartData()
-    chart_data.categories = ["2 KB", "8 KB", "32 KB", "128 KB", "512 KB"]
-    chart_data.add_series("Avg total time (us)", TOTAL_US)
-    chart = slide.shapes.add_chart(
-        XL_CHART_TYPE.COLUMN_CLUSTERED,
-        PptInches(0.55), PptInches(1.55), PptInches(7.0), PptInches(4.75),
-        chart_data
-    ).chart
-    chart.has_legend = False
-    chart.chart_title.has_text_frame = True
-    chart.chart_title.text_frame.text = "Total Request Time vs. Chunk Size"
-    chart.value_axis.tick_labels.font.size = PptPt(9)
-    chart.category_axis.tick_labels.font.size = PptPt(10)
-    chart.plots[0].has_data_labels = True
-    chart.plots[0].data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
-    chart.plots[0].data_labels.font.size = PptPt(8)
-    chart.series[0].format.fill.solid()
-    chart.series[0].format.fill.fore_color.rgb = RGBColor(80, 190, 170)
+    add_box(PptInches(0.45), PptInches(1.05), PptInches(7.65), PptInches(5.45), "#111827", "#334155")
+    slide.shapes.add_picture(str(poster_chart), PptInches(0.72), PptInches(1.32), width=PptInches(7.12), height=PptInches(4.7))
+    add_text(PptInches(0.82), PptInches(5.95), PptInches(6.9), PptInches(0.32), "30 runs per chunk size on two laptops over Wi-Fi", 11, "#cbd5e1", False, PP_ALIGN.CENTER)
 
-    box(PptInches(8.05), PptInches(1.45), PptInches(4.8), PptInches(1.25), RGBColor(20, 31, 47))
-    metric = slide.shapes.add_textbox(PptInches(8.35), PptInches(1.6), PptInches(4.2), PptInches(0.85))
-    metric.text_frame.text = "7.7x faster"
-    metric.text_frame.paragraphs[0].font.size = PptPt(38)
-    metric.text_frame.paragraphs[0].font.bold = True
-    metric.text_frame.paragraphs[0].font.color.rgb = RGBColor(255, 210, 92)
+    add_box(PptInches(8.35), PptInches(1.05), PptInches(4.55), PptInches(1.45), "#172033", "#475569")
+    add_text(PptInches(8.65), PptInches(1.2), PptInches(1.75), PptInches(0.55), "7.7x", 42, "#facc15", True)
+    add_text(PptInches(10.35), PptInches(1.25), PptInches(2.15), PptInches(0.38), "faster total time", 15, "#f8fafc", True)
+    add_text(PptInches(10.35), PptInches(1.66), PptInches(2.15), PptInches(0.48), "338 ms -> 44 ms", 20, "#38bdf8", True)
+    add_text(PptInches(8.65), PptInches(2.12), PptInches(3.95), PptInches(0.25), "same records, different response shape", 10.5, "#94a3b8")
 
-    note = slide.shapes.add_textbox(PptInches(8.35), PptInches(2.35), PptInches(4.2), PptInches(0.35))
-    note.text_frame.text = "512 KB chunks vs. 2 KB chunks, two laptops, 80,000 records"
-    note.text_frame.paragraphs[0].font.size = PptPt(11)
-    note.text_frame.paragraphs[0].font.color.rgb = RGBColor(198, 208, 224)
+    add_box(PptInches(8.35), PptInches(2.75), PptInches(4.55), PptInches(1.0), "#101826", "#334155")
+    add_text(PptInches(8.62), PptInches(2.9), PptInches(3.95), PptInches(0.25), "Round-trip pressure collapsed", 14, "#f8fafc", True)
+    add_text(PptInches(8.7), PptInches(3.23), PptInches(1.15), PptInches(0.35), "800", 25, "#fb7185", True, PP_ALIGN.CENTER)
+    add_text(PptInches(9.85), PptInches(3.28), PptInches(0.55), PptInches(0.25), "to", 13, "#94a3b8", False, PP_ALIGN.CENTER)
+    add_text(PptInches(10.4), PptInches(3.23), PptInches(0.9), PptInches(0.35), "4", 25, "#34d399", True, PP_ALIGN.CENTER)
+    add_text(PptInches(11.15), PptInches(3.32), PptInches(1.1), PptInches(0.2), "client calls", 10, "#cbd5e1")
 
-    box(PptInches(8.05), PptInches(3.0), PptInches(4.8), PptInches(1.55), RGBColor(20, 31, 47))
-    caveat = slide.shapes.add_textbox(PptInches(8.35), PptInches(3.16), PptInches(4.25), PptInches(1.16))
-    caveat.text_frame.text = "Validation failures caught:\nport collision | partial tree | cached partial result | binary layout | missing shards"
-    for p in caveat.text_frame.paragraphs:
-        p.font.size = PptPt(14)
-        p.font.bold = True
-        p.font.color.rgb = RGBColor(245, 248, 255)
+    add_box(PptInches(8.35), PptInches(4.05), PptInches(4.55), PptInches(1.65), "#111827", "#334155")
+    add_text(PptInches(8.65), PptInches(4.2), PptInches(3.95), PptInches(0.25), "Validation gates we failed first", 14, "#f8fafc", True)
+    gates = [
+        ("01", "stale ports"),
+        ("02", "partial tree"),
+        ("03", "cache bug"),
+        ("04", "binary layout"),
+        ("05", "missing shards"),
+    ]
+    x0 = 8.63
+    for i, (num, label) in enumerate(gates):
+        x = PptInches(x0 + i * 0.82)
+        add_box(x, PptInches(4.62), PptInches(0.56), PptInches(0.34), "#1e293b", "#475569")
+        add_text(x, PptInches(4.68), PptInches(0.56), PptInches(0.15), num, 8.5, "#facc15", True, PP_ALIGN.CENTER)
+        add_text(PptInches(x0 + i * 0.82 - 0.04), PptInches(5.05), PptInches(0.7), PptInches(0.35), label, 7.7, "#cbd5e1", False, PP_ALIGN.CENTER)
 
-    box(PptInches(8.05), PptInches(4.85), PptInches(4.8), PptInches(1.05), RGBColor(20, 31, 47))
-    topo = slide.shapes.add_textbox(PptInches(8.35), PptInches(5.0), PptInches(4.25), PptInches(0.7))
-    topo.text_frame.text = "Fairness: 4 clients each got 50 chunks\nFailure: H down before gather failed fast"
-    for p in topo.text_frame.paragraphs:
-        p.font.size = PptPt(15)
-        p.font.color.rgb = RGBColor(220, 230, 242)
+    add_box(PptInches(8.35), PptInches(5.98), PptInches(2.15), PptInches(0.75), "#13251f", "#34d399")
+    add_text(PptInches(8.55), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Fairness", 12, "#bbf7d0", True)
+    add_text(PptInches(8.55), PptInches(6.36), PptInches(1.75), PptInches(0.2), "4 clients each got 50 chunks", 9.2, "#dcfce7")
 
-    footer = slide.shapes.add_textbox(PptInches(0.55), PptInches(6.82), PptInches(12.2), PptInches(0.3))
-    footer.text_frame.text = "Not a project summary: one finding, one tradeoff, and the failures that made the finding credible."
-    footer.text_frame.paragraphs[0].font.size = PptPt(11)
-    footer.text_frame.paragraphs[0].font.color.rgb = RGBColor(166, 178, 196)
+    add_box(PptInches(10.75), PptInches(5.98), PptInches(2.15), PptInches(0.75), "#2a1b13", "#f59e0b")
+    add_text(PptInches(10.95), PptInches(6.1), PptInches(1.75), PptInches(0.2), "Failure", 12, "#fde68a", True)
+    add_text(PptInches(10.95), PptInches(6.36), PptInches(1.75), PptInches(0.2), "H down before gather failed fast", 9.2, "#ffedd5")
+
+    add_text(
+        PptInches(0.55),
+        PptInches(6.85),
+        PptInches(12.2),
+        PptInches(0.28),
+        "Takeaway: chunk size is a performance knob; validation is what made the knob worth measuring.",
+        13,
+        "#e2e8f0",
+        True,
+        PP_ALIGN.CENTER,
+    )
 
     prs.save(ROOT / "mini2-poster.pptx")
 

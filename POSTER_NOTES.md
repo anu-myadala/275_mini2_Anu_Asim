@@ -22,7 +22,9 @@ Make a bar chart from `results/chunk_sweep_2host_30runs.tsv`:
 | 128000 | 47482 |
 | 512000 | 44046 |
 
-Title: `The Fastest Curve Was Not Trustworthy Until We Broke It`
+Title: `FAST LIES`
+
+Subtitle: `Why our 7.7x chunk-size speedup only counted after validation`
 
 ## One-Sentence Result
 
@@ -71,11 +73,13 @@ interesting than how we proved the number was real.
 
 ## Visual Layout
 
-Use a dark background with one large chart in the center. Put the 7.7x number
-large on the right, and place a small "validation failures caught" box under it.
-Keep topology tiny or leave it out verbally; the slide should not become an
-architecture diagram. Keep the text short enough that people can read it from
-the back of the room.
+Use a dark background with one large horizontal-bar chart on the left. Put the
+7.7x number large on the right, then show the round-trip collapse from 800
+calls to 4 calls. Under that, use a compact row of validation gates:
+stale ports, partial tree, cache bug, binary layout, missing shards.
+
+Keep topology out of the main slide; it belongs in the talk if needed. The
+slide should feel like a research poster, not an architecture diagram.
 
 ## Small Topology Graphic
 
