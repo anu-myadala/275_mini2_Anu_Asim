@@ -161,11 +161,14 @@ def make_docx():
 
     add_heading(doc, "References", 1)
     for item in [
-        "NYC Open Data 311 Service Requests dataset.",
+        "NYC Open Data / Data.gov, 311 Service Requests from 2020 to Present: https://catalog.data.gov/dataset/311-service-requests-from-2010-to-present",
+        "NYC Open Data, 311 Service Requests Updates: https://opendata.cityofnewyork.us/311-service-requests-from-2010-to-present-updates/",
+        "gRPC, Performance Best Practices: https://grpc.io/docs/guides/performance/",
+        "Protocol Buffers, Encoding: https://protobuf.dev/programming-guides/encoding/",
+        "Protocol Buffers, Language Guide (proto3): https://protobuf.dev/programming-guides/proto3/",
+        "AMD Vitis HLS Documentation, Data Structure Padding: https://docs.amd.com/r/2024.1-English/ug1399-vitis-hls/Data-Structure-Padding",
         "Course lectures on messaging/socket costs, sharding, parallelism, failure behavior, and benchmarking.",
         "Course labs covering basic gRPC, leader coordination, MPI round/baton behavior, and sockets.",
-        "gRPC and Protocol Buffers documentation for unary service structure and typed messages.",
-        "Data structure alignment notes used after Mini 1 feedback.",
     ]:
         doc.add_paragraph(item, style="List Bullet")
 

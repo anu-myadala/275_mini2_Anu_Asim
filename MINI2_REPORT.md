@@ -255,11 +255,30 @@ final code cleanup and validation.
 
 ## References
 
-- NYC Open Data, 311 Service Requests dataset.
+- NYC Open Data / Data.gov, "311 Service Requests from 2020 to Present."
+  This validates the source and structure of the real 311 dataset used for shard
+  generation:
+  https://catalog.data.gov/dataset/311-service-requests-from-2010-to-present
+- NYC Open Data, "311 Service Requests Updates." This explains that the current
+  2020-present 311 dataset is updated and maintained separately from the older
+  historical dataset:
+  https://opendata.cityofnewyork.us/311-service-requests-from-2010-to-present-updates/
+- gRPC, "Performance Best Practices." This supports our decision to measure
+  request/response cost carefully and not assume gRPC removes message-size and
+  latency tradeoffs:
+  https://grpc.io/docs/guides/performance/
+- Protocol Buffers, "Encoding." This supports the idea that message format and
+  field encoding affect wire size, which is why our fixed binary record and
+  chunk sizes were measured explicitly:
+  https://protobuf.dev/programming-guides/encoding/
+- Protocol Buffers, "Language Guide (proto3)." This was used for typed message
+  definitions and cross-language protobuf behavior:
+  https://protobuf.dev/programming-guides/proto3/
+- AMD Vitis HLS Documentation, "Data Structure Padding." This is a clear
+  outside reference for the Mini 1 feedback point that struct size is affected
+  by alignment and padding, not only by adding field sizes:
+  https://docs.amd.com/r/2024.1-English/ug1399-vitis-hls/Data-Structure-Padding
 - Course lectures: messaging/socket costs, sharding, parallelism, failure
   behavior, and benchmarking guidance.
-- Course labs: basic gRPC, leader/leader-adv, MPI round/baton, socket examples.
-- gRPC C++ and Python documentation for unary RPC service structure.
-- Protocol Buffers documentation for typed message definitions.
-- Data structure alignment notes used after Mini 1 feedback to avoid assuming
-  struct size is only the sum of field sizes.
+- Course labs: `basic-grpc`, `leader-adv`, MPI round/baton, and socket
+  interoperability examples.
