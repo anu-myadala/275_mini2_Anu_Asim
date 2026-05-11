@@ -1,12 +1,3 @@
-// Leader node main – starts the LeaderService on node A (or any id passed
-// at runtime). The node identity is NEVER hardcoded; supply it on the
-// command line.
-//
-// Usage:
-//   ./leader <node_id> <config_path>
-//
-// Typical invocation:
-//   ./leader A ../config/nodes.yaml
 #include <grpcpp/grpcpp.h>
 #include "cluster.grpc.pb.h"
 #include "leader_node.cpp"
@@ -17,8 +8,8 @@ int main(int argc, char* argv[]) {
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0]
                   << " <node_id> <config_path>\n"
-                  << "  node_id     – typically 'A'\n"
-                  << "  config_path – path to nodes.yaml\n";
+                  << "  node_id     - typically 'A'\n"
+                  << "  config_path - path to nodes.yaml\n";
         return 1;
     }
 

@@ -6,9 +6,6 @@
 #include <string>
 #include <vector>
 
-// ── Timing utility ────────────────────────────────────────────────────────────
-// All latency measurements in the codebase use these types for consistency.
-// steady_clock is monotonic and unaffected by wall-clock adjustments.
 using Clock   = std::chrono::steady_clock;
 using NsCount = long long;
 
@@ -19,21 +16,12 @@ inline NsCount now_ns() {
 
 inline NsCount elapsed_ns(NsCount start_ns) { return now_ns() - start_ns; }
 
-// ── Per-node address/port ─────────────────────────────────────────────────────
 struct NodeInfo {
     std::string addr;
     int         port;
     std::string endpoint() const { return addr + ":" + std::to_string(port); }
 };
 
-// ── Cluster configuration loaded from nodes.yaml ─────────────────────────────
-// Reads the overlay graph, derives the BFS spanning tree from the designated
-// leader, and exposes per-node address info and child lists.
-//
-// Design: the overlay is undirected. BFS from the root imposes a tree
-// direction (parent → children). This means the physical topology can be
-// re-wired by editing nodes.yaml alone; no source change is needed.
-// Node identity (the letter A–I) is also read at runtime, never hardcoded.
 class ClusterConfig {
 public:
     bool load(const std::string& path) {
@@ -43,7 +31,6 @@ public:
             auto hosts = cfg["hosts"];
             auto ports = cfg["ports"];
 
-            // 1. Build node-id -> {addr, port}
             for (auto h : hosts) {
                 std::string addr = h.second["addr"].as<std::string>();
                 for (auto p : h.second["procs"]) {
@@ -52,7 +39,6 @@ public:
                 }
             }
 
-            // 2. Adjacency list (undirected) from overlay edges
             for (auto edge : cfg["overlay"]) {
                 std::string a = edge[0].as<std::string>();
                 std::string b = edge[1].as<std::string>();
@@ -60,7 +46,6 @@ public:
                 adj_[b].push_back(a);
             }
 
-            // 3. Find designated root (leader)
             for (auto r : cfg["roles"]) {
                 std::string nid  = r.first.as<std::string>();
                 std::string role = r.second["role"].as<std::string>();
@@ -69,8 +54,7 @@ public:
             if (root_.empty() && !nodes_.empty())
                 root_ = nodes_.begin()->first;
 
-            // 4. Prefer an explicit directed tree when present. It keeps the
-            // experiment reproducible while still leaving topology in config.
+            // The explicit tree avoids ambiguous parents in the overlay.
             if (cfg["children"]) {
                 for (auto item : cfg["children"]) {
                     std::string parent = item.first.as<std::string>();
@@ -101,7 +85,6 @@ public:
 
     const std::string& root() const { return root_; }
 
-    // Expose the full node map for benchmarking scripts that need to iterate.
     const std::map<std::string, NodeInfo>& nodes() const { return nodes_; }
 
 private:

@@ -77,6 +77,7 @@ def make_docx():
 
     add_heading(doc, "Design", 1)
     add_para(doc, "The cluster uses a configured scatter-gather tree: A -> B,H,G,I; B -> C,D,E; E -> F. A is the only public entry point. B-I own typed binary shards, and I is implemented in Python.")
+    add_para(doc, "The data source is NYC 311 Service Requests from 2020 to Present. We used a 90,000-row subset from the public CSV so the test was repeatable and the Canvas submission did not include the large dataset.")
     add_para(doc, "Each 311 row is stored as a compact 20-byte record: unique key, latitude, longitude, incident zip, created year, status code, and borough code.")
     add_para(doc, "The design uses unary gRPC calls with explicit offsets. A streaming prototype was dropped because the assignment required non-streaming gRPC and the explicit offsets made failure behavior easier to test.")
 
@@ -155,6 +156,7 @@ def make_docx():
         cells = tail_table.add_row().cells
         for i, value in enumerate(row):
             cells[i].text = str(value)
+    add_para(doc, "CV is the sample standard deviation divided by the mean across the 30 runs.")
     add_para(doc, "The medians show that large chunks were usually faster, but the high P90/CV values show why their means were not much better than 32 KB. With only 4-13 chunks, one slow remote gather or large response spike can dominate an entire run. A 32 KB chunk is therefore a good robust operating point for this setup: near-fastest mean, lower tail risk, and the fairness test was run at this size.")
 
     add_heading(doc, "Fairness Result", 1)
@@ -192,6 +194,13 @@ def make_docx():
         "gRPC, Performance Best Practices: https://grpc.io/docs/guides/performance/",
         "Protocol Buffers, Encoding: https://protobuf.dev/programming-guides/encoding/",
         "Protocol Buffers, Language Guide (proto3): https://protobuf.dev/programming-guides/proto3/",
+        "Python struct documentation for the exact C++/Python binary record contract: https://docs.python.org/3/library/struct.html",
+        "CMake add_custom_command documentation for generating protobuf/gRPC sources during the build: https://cmake.org/cmake/help/latest/command/add_custom_command.html",
+        "gRPC C++ basics tutorial for protoc/grpc_cpp_plugin build pattern: https://grpc.io/docs/languages/cpp/basics/",
+        "PyYAML documentation for loading YAML configuration on the Python node: https://pyyaml.org/wiki/PyYAMLDocumentation",
+        "yaml-cpp project documentation for C++ YAML parsing: https://github.com/jbeder/yaml-cpp",
+        "python-pptx documentation for generating the one-slide poster: https://python-pptx.readthedocs.io/",
+        "Matplotlib barh documentation for the horizontal poster chart: https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.barh.html",
         "AMD Vitis HLS Documentation, Data Structure Padding: https://docs.amd.com/r/2024.1-English/ug1399-vitis-hls/Data-Structure-Padding",
         "Course lectures on messaging/socket costs, sharding, parallelism, failure behavior, and benchmarking.",
         "Course labs covering basic gRPC, leader coordination, MPI round/baton behavior, and sockets.",
@@ -202,7 +211,7 @@ def make_docx():
 
 
 def make_poster_chart(path):
-    labels = ["2 KB", "8 KB", "32 KB", "128 KB", "512 KB"]
+    labels = ["2 KB  | 800 pages", "8 KB  | 200 pages", "32 KB | 50 pages", "128 KB | 13 pages", "512 KB | 4 pages"]
     mean_ms = [v / 1000 for v in TOTAL_US]
     median_ms = [v / 1000 for v in MEDIAN_US]
     p90_ms = [v / 1000 for v in P90_US]
@@ -216,7 +225,7 @@ def make_poster_chart(path):
     ax.set_xlim(0, 430)
     ax.set_xlabel("total request time, ms", color="#cbd5e1", labelpad=10)
     ax.tick_params(axis="x", colors="#94a3b8", labelsize=10)
-    ax.tick_params(axis="y", colors="#f8fafc", labelsize=13)
+    ax.tick_params(axis="y", colors="#f8fafc", labelsize=11.5)
     ax.grid(axis="x", color="#334155", linewidth=0.7, alpha=0.55)
     ax.set_axisbelow(True)
     for spine in ax.spines.values():
@@ -239,7 +248,7 @@ def make_poster_chart(path):
     ax.text(
         0,
         -0.92,
-        "Mean bars, median dots, P90 tick marks",
+        "Mean bars, median dots, P90 ticks",
         color="#e2e8f0",
         fontsize=13,
         fontweight="bold",
@@ -247,7 +256,7 @@ def make_poster_chart(path):
     ax.text(
         0,
         -0.55,
-        "The knee is near 32 KB: mean is almost flat after that, but tail risk grows.",
+        "Knee near 32 KB: mean flattens after that, but tail risk grows.",
         color="#94a3b8",
         fontsize=10.5,
     )
@@ -303,10 +312,20 @@ def make_poster():
         True,
     )
     add_text(PptInches(11.55), PptInches(0.35), PptInches(1.25), PptInches(0.3), "Anukrithi + Asim", 9.5, "#94a3b8", False, PP_ALIGN.RIGHT)
+    add_text(
+        PptInches(5.08),
+        PptInches(0.78),
+        PptInches(6.6),
+        PptInches(0.22),
+        "NYC 311 2020-present | 80k returned rows | 20-byte records | A-F host1, G/H/I host2 | 30 runs/size",
+        9.5,
+        "#94a3b8",
+    )
 
     add_box(PptInches(0.45), PptInches(1.05), PptInches(7.65), PptInches(5.45), "#111827", "#334155")
     slide.shapes.add_picture(str(poster_chart), PptInches(0.72), PptInches(1.32), width=PptInches(7.12), height=PptInches(4.7))
     add_text(PptInches(0.82), PptInches(5.95), PptInches(6.9), PptInches(0.32), "30 runs per chunk size on two laptops over Wi-Fi", 11, "#cbd5e1", False, PP_ALIGN.CENTER)
+    add_text(PptInches(0.82), PptInches(6.2), PptInches(6.9), PptInches(0.2), "keywords: page count | gather/cache floor | P90 tail | opportunity fairness | fail-fast", 8.8, "#94a3b8", False, PP_ALIGN.CENTER)
 
     add_box(PptInches(8.35), PptInches(1.05), PptInches(4.55), PptInches(1.45), "#172033", "#475569")
     add_text(PptInches(8.65), PptInches(1.2), PptInches(1.75), PptInches(0.55), "7.7x", 42, "#facc15", True)

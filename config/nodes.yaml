@@ -1,7 +1,5 @@
 cluster: mini2
 
-# Overlay edges exactly as specified:
-#   AB, BC, BD, BE, EF, ED, EG, AH, AG, AI
 overlay:
   - [A, B]
   - [B, C]
@@ -14,9 +12,6 @@ overlay:
   - [A, G]
   - [A, I]
 
-# Directed scatter-gather tree used by the code. The overlay above records the
-# assignment edges; this section removes ambiguity when an overlay edge would
-# otherwise create multiple possible parents.
 children:
   A: [B, H, G, I]
   B: [C, D, E]
@@ -33,10 +28,6 @@ roles:
   H: {role: team}
   I: {role: team, lang: python}
 
-# Two-host deployment.
-# Update addr values with the actual IP addresses of your two machines.
-# host1: runs the leader (A) and primary team nodes.
-# host2: runs the remaining team nodes, including the Python node I.
 hosts:
   host1: { addr: 192.168.1.139, procs: [A, B, C, D, E, F] }
   host2: { addr: 192.168.1.118, procs: [G, H, I] }

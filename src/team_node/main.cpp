@@ -1,13 +1,3 @@
-// Team node main – starts any non-leader node (B through I) depending on
-// command-line arguments.  The node identity is NEVER hardcoded here; it
-// must be supplied at runtime so the same binary can serve any role.
-//
-// Usage:
-//   ./team_node <node_id> <config_path>
-//
-// Example:
-//   ./team_node B ../config/nodes.yaml
-//   ./team_node E ../config/nodes.yaml
 #include <grpcpp/grpcpp.h>
 #include "cluster.grpc.pb.h"
 #include "team_node.hpp"
@@ -18,8 +8,8 @@ int main(int argc, char* argv[]) {
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0]
                   << " <node_id> <config_path>\n"
-                  << "  node_id    – single letter, e.g. B, C, D … H\n"
-                  << "  config_path – path to nodes.yaml\n";
+                  << "  node_id     - single letter, e.g. B, C, D, E\n"
+                  << "  config_path - path to nodes.yaml\n";
         return 1;
     }
 

@@ -23,14 +23,17 @@ total time, dots should show median total time, and small ticks should show P90.
 | 128000 | 47.5 | 28.3 | 115.3 | 0.74 |
 | 512000 | 44.0 | 25.8 | 110.1 | 0.80 |
 
+CV is sample standard deviation divided by the mean across the 30 runs.
+
 Title: `THE 32 KB KNEE`
 
 Subtitle: `Repeated pages dominated until the gather/cache floor took over`
 
 ## One-Sentence Result
 
-For the same 80,000 typed 311 records split across two laptops, 512 KB chunks
-averaged about 44 ms while 2 KB chunks took about 338 ms. But the real discovery
+For the same 80,000 typed NYC 311 2020-present records split across two
+laptops, 512 KB chunks averaged about 44 ms while 2 KB chunks took about
+338 ms. But the real discovery
 is that 32 KB and 512 KB means were only 1.7 ms apart, so the useful design point
 is the knee, not blindly choosing the largest chunk.
 

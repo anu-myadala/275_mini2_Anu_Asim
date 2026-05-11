@@ -2,49 +2,37 @@ syntax = "proto3";
 
 package mini2;
 
-// Query represents a paginated request from a client.
-// chunk_size controls how many bytes the leader returns per QueryOnce call,
-// allowing the client to tune memory pressure vs. round-trip count.
 message Query {
-  string client_id  = 1;  // stable identifier for FairQueue scheduling
-  string request_id = 2;  // unique per logical query; used as cache key
-  int32  chunk_size = 3;  // max payload bytes per reply chunk (0 = default 128)
-  int32  offset     = 4;  // byte offset into the full result set; 0 on first call
+  string client_id  = 1;
+  string request_id = 2;
+  int32  chunk_size = 3;
+  int32  offset     = 4;
 }
 
-// ShardRequest wraps a Query for fan-out from leader to team nodes.
 message ShardRequest {
   Query query = 1;
 }
 
-// Segment carries a binary payload slice. last=true signals the final
-// segment from a given node, allowing incremental processing by callers.
 message Segment {
   bytes payload = 1;
   bool  last    = 2;
 }
 
-// ShardReply aggregates all segments from one team-node subtree.
 message ShardReply {
   repeated Segment segments = 1;
 }
 
-// AggregatedReply is what the leader returns to the external client.
-// Pagination is explicit: next_offset is the offset to supply on the next
-// QueryOnce call; -1 when no more data remains.
 message AggregatedReply {
   repeated Segment segments   = 1;
-  bool             complete   = 2;   // true when all data has been delivered
-  int32            next_offset = 3;  // next byte offset; -1 when complete
-  bool             has_more   = 4;   // convenience flag (next_offset != -1)
+  bool             complete   = 2;
+  int32            next_offset = 3;
+  bool             has_more   = 4;
 }
 
-// TeamService is implemented by every non-leader node (B–I).
 service TeamService {
   rpc Fetch(ShardRequest) returns (ShardReply);
 }
 
-// LeaderService is the sole external entry point (node A).
 service LeaderService {
   rpc QueryOnce(Query) returns (AggregatedReply);
 }

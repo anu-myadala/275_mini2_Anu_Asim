@@ -58,7 +58,11 @@ chunk offsets also made the chunk-size experiment easier to measure.
 
 ## Data Representation
 
-The NYC 311 CSV is converted into one binary shard per data node. Each record is
+The NYC 311 source is a public 2020-present service-request dataset. Data.gov
+describes it as daily-updated operational data about requests, complaint/problem
+types, agencies, and geographic location; we used a 90,000-row subset for
+repeatable class testing instead of submitting the full dataset. The CSV is
+converted into one binary shard per data node. Each record is
 20 bytes:
 
 | Field | Type | Bytes | Why we chose it |
@@ -95,6 +99,21 @@ kept the code simple instead of copying in extra framework code:
   of letting one process own all rows.
 - The MPI round/baton labs influenced the fairness test. We measured whether
   clients got turns, not just whether the fastest client finished quickly.
+
+## Outside Sources Used for Non-Class Pieces
+
+Most of the design comes from class topics: gRPC, overlays, sharding, fairness,
+and benchmarking. A few implementation details were filled in from official
+documentation:
+
+- The Python/C++ binary record contract used Python's `struct` documentation.
+  The shared format is `<iffIHBB`, which is exactly 20 bytes.
+- The generated protobuf/gRPC C++ build step used CMake `add_custom_command`
+  documentation and the gRPC C++ basics tutorial.
+- YAML config loading used yaml-cpp on the C++ side and PyYAML on the Python
+  side.
+- The generated poster/report tooling used python-pptx and Matplotlib. This is
+  presentation tooling only; it is not part of the distributed query runtime.
 
 ## Mini 2 Questions Answered
 
@@ -158,6 +177,7 @@ serialization/copying, and Wi-Fi tail spikes.
 | 128000 | 47.5 | 28.3 | 115.3 | 0.74 |
 | 512000 | 44.0 | 25.8 | 110.1 | 0.80 |
 
+CV here is the sample standard deviation divided by the mean across the 30 runs.
 The medians show that large chunks were usually faster. The tail numbers show
 why the means flatten: large chunks were much more sensitive to a single slow
 remote gather or response spike. In this setup, 512 KB had the best mean and
@@ -292,6 +312,24 @@ final code cleanup and validation.
 - Protocol Buffers, "Language Guide (proto3)." This was used for typed message
   definitions and cross-language protobuf behavior:
   https://protobuf.dev/programming-guides/proto3/
+- Python documentation, "`struct` - Interpret bytes as packed binary data."
+  This supports the exact C++/Python binary layout contract:
+  https://docs.python.org/3/library/struct.html
+- CMake documentation, "`add_custom_command`." This supports how the project
+  generates protobuf/gRPC C++ sources during the build:
+  https://cmake.org/cmake/help/latest/command/add_custom_command.html
+- gRPC, "Basics tutorial: C++." This supports the `protoc` +
+  `grpc_cpp_plugin` source-generation pattern:
+  https://grpc.io/docs/languages/cpp/basics/
+- PyYAML documentation. This supports Python YAML config parsing for node I:
+  https://pyyaml.org/wiki/PyYAMLDocumentation
+- yaml-cpp project documentation. This supports the C++ config parser:
+  https://github.com/jbeder/yaml-cpp
+- python-pptx documentation. This supports the generated one-slide poster:
+  https://python-pptx.readthedocs.io/
+- Matplotlib documentation, `barh`. This supports the horizontal chart used in
+  the poster:
+  https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.barh.html
 - AMD Vitis HLS Documentation, "Data Structure Padding." This is a clear
   outside reference for the Mini 1 feedback point that struct size is affected
   by alignment and padding, not only by adding field sizes:
