@@ -27,21 +27,4 @@
 | Tabular and graph results | Done | Tables in report, chart in `results/chunk_sweep_chart.png` and poster |
 | Presentation is a single finding | Done | Poster focuses on chunk size plus validation failures, not a project summary |
 | Individual contributions included | Done | Included in `MINI2_REPORT.md` |
-
-## Final Submission Package
-
-Create the Canvas archive from the project root after one last document
-generation:
-
-```bash
-python3 scripts/generate_submission_docs.py
-tar --exclude='build' \
-    --exclude='shards' \
-    --exclude='*.csv' \
-    --exclude='.git' \
-    -czf mini2_submission.tar.gz \
-    CMakeLists.txt README.md config proto scripts src results \
-    MINI2_REPORT.md mini2-poster.pptx \
-    RUN_RESULTS.md TWO_COMPUTER_RUNBOOK.md \
-    REQUIREMENTS_CHECKLIST.md
 ```
