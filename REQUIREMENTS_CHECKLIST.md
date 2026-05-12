@@ -41,12 +41,7 @@ tar --exclude='build' \
     --exclude='.git' \
     -czf mini2_submission.tar.gz \
     CMakeLists.txt README.md config proto scripts src results \
-    MINI2_REPORT.md mini2-report.docx mini2-poster.pptx \
-    POSTER_NOTES.md POSTER_SPEAKING_NOTES_10MIN.md \
-    PROJECT_EXPLAINED_ELI5.md RUN_RESULTS.md TWO_COMPUTER_RUNBOOK.md \
+    MINI2_REPORT.md mini2-poster.pptx \
+    RUN_RESULTS.md TWO_COMPUTER_RUNBOOK.md \
     REQUIREMENTS_CHECKLIST.md
 ```
-
-Before submitting, open `mini2-poster.pptx` and confirm it is exactly one slide.
-The slide should present the unique finding: chunk size controlled request time,
-but the result only became trustworthy after the validation failures were fixed.
