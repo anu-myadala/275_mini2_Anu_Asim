@@ -15,7 +15,7 @@ dominates; above it, the fixed gather/transfer floor and Wi-Fi variance dominate
 
 ## Important Files
 
-- `MINI2_REPORT.md` and `mini2-report.docx`: final report.
+- `MINI2_REPORT.md`: final report.
 - `mini2-poster.pptx`: one-slide presentation.
 - `RUN_RESULTS.md`: measured two-computer results and failure observations.
 - `TWO_COMPUTER_RUNBOOK.md`: detailed run instructions.
@@ -23,5 +23,5 @@ dominates; above it, the fixed gather/transfer floor and Wi-Fi variance dominate
 - `scripts/make_shards.py`: converts the 311 CSV into binary shards.
 - `config/nodes.yaml`: host/process/tree configuration.
 
-Do not include the large 311 CSV or generated `shards/` directory in the Canvas
-submission archive.
+Do not include the large 311 CSV, generated `shards/` directory, `build/`,
+`logs/`, or virtual environments in the Canvas submission archive.
